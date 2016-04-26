@@ -52,6 +52,7 @@ public class ContentExtractor {
 				// TODO Auto-generated catch block
 				line = br.readLine();
 				System.out.println(tokens[0]);
+				//System.out.println(e.toString());
 				continue;
 				// e.printStackTrace();
 			}
@@ -66,7 +67,7 @@ public class ContentExtractor {
 		String[] result = new String[4];
 		//Entities.EscapeMode.base.getMap().clear();
 		Document doc = Jsoup.connect(strURL)
-				.timeout(1000)
+				.timeout(5000)
 				.get();
 
 		String html = doc.outerHtml();

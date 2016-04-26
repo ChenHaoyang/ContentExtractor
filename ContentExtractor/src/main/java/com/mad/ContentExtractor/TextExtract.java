@@ -43,27 +43,35 @@ public class TextExtract {
 		flag = _flag;
 		html = _html;
 		html = preProcess(url_id, html);
-//		System.out.println(html);
 		return getText();
 	}
 	//private static int FREQUENT_URL = 30;
 	//private static Pattern links = Pattern.compile("<[aA]\\s+[Hh][Rr][Ee][Ff]=[\"|\']?([^>\"\' ]+)[\"|\']?\\s*[^>]*>([^>]+)</a>(\\s*.{0,"+FREQUENT_URL+"}\\s*<a\\s+href=[\"|\']?([^>\"\' ]+)[\"|\']?\\s*[^>]*>([^>]+)</[aA]>){2,100}", Pattern.DOTALL);
+	private static Pattern main_rule = Pattern.compile("(<meta.*?>|<!DOCTYPE.*?>|<!--.*?-->|<script.*?>.*?</script>|<style.*?>.*?</style>|<title.*?>.*?</title>|<select.*?>.*?</select>|<noscript.*?>.*?</noscript>|<link.*?>|<li.*?>.*?</li>|<ul.*?>.*?</ul>|<ol.*?>.*?</ol>|<dl.*?>.*?</dl>)",  Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+	private static Pattern sub_rule_01 = Pattern.compile("(<br>[\\s]*?){2}", Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+	private static Pattern sub_rule_02 = Pattern.compile("(<br>|\r\n)", Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+	//private static Pattern sub_rule_03 = Pattern.compile("<[^>]*['\"].*['\"].*?>", Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+	private static Pattern sub_rule_03 = Pattern.compile("<([^>\"]*[\"].*?[\"])+.*?>", Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+	private static Pattern sub_rule_04 = Pattern.compile("<.*?>", Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+	
 	private static String preProcess(String url_id, String source) {
 		source = StringEscapeUtils.unescapeHtml(source);
 		//source = source.replaceAll("(?is)<!DOCTYPE.*?>", "");
 		//source = source.replaceAll("(?is)<!--.*?-->", "");				// remove html comment
 		//source = source.replaceAll("(?is)<(script|style|title|span|select|noscript).*?>.*?</(script|style|title|span|select|noscript)>", "");
-		source = source.replaceAll("(?is)(<!DOCTYPE.*?>|<!--.*?-->|<script.*?>.*?</script>|<style.*?>.*?</style>|<title.*?>.*?</title>|<select.*?>.*?</select>|<noscript.*?>.*?</noscript>)", "");
+		//source = source.replaceAll("(?is)(<meta[^<]*?>|<!DOCTYPE.*?>|<!--.*?-->|<script.*?>.*?</script>|<style.*?>.*?</style>|<title.*?>.*?</title>|<select.*?>.*?</select>|<noscript.*?>.*?</noscript>|<li[^<]*?>.*?</li>|<ul.*?>.*?</ul>|<ol.*?>.*?</ol>|<dl.*?>.*?</dl>)", "");
 		//source = source.replaceAll("(?is)<script.*?>.*?</script>", "");
 		//source = source.replaceAll("(?is)<style.*?>.*?</style>", "");
 		//source = source.replaceAll("(?is)<title.*?>.*?</title>", "");
 		//source = source.replaceAll("(?is)<span.*?>.*?</span>", "");
 		//source = source.replaceAll("(?is)<select.*?>.*?</select>", "");
 		//source = source.replaceAll("(?is)<noscript.*?>.*?</noscript>", "");
-		if(flag)
-			source = source.replaceAll("(?is)<a.*?>.*?</a>", "");
+//		if(flag)
+//			source = source.replaceAll("(?is)<a.*?>.*?</a>", "");
 		//System.out.println(source);
-		int len = source.length();
+		//int len = source.length();
+		//source = "<link rel=\"stylesheet\" type=\"text/css\" href=\"http://st.shinobi.jp/img/services/homepage/commercial.css\" /></HEAD>";
+		source = main_rule.matcher(source).replaceAll("");
 //		while ((source = links.matcher(source).replaceAll("")).length() != len)
 //		{
 //			len = source.length();
@@ -72,19 +80,30 @@ public class TextExtract {
 		
 		//source = links.matcher(source).replaceAll("");
 		//System.out.println(source);
-		while(Pattern.compile("(<br>[\\s]*?){2}").matcher(source).find())
-			source = source.replaceAll("(<br>[\\s]*?){2}", "<br>");
-		source = source.replaceAll("(<br>|\r\n)", "\n");
-		source = source.replaceAll("<[^>]*>", "");
+		
+		while(sub_rule_01.matcher(source).find())
+			//source = source.replaceAll("(<br>[\\s]*?){2}", "<br>");
+			source = sub_rule_01.matcher(source).replaceAll("<br>");
+		//source = source.replaceAll("(<br>|\r\n)", "\n");
+		//source = source.replaceAll("(?is)<.*?>", "");
+		source = sub_rule_02.matcher(source).replaceAll("\n");
+		//if(url_id.equals("222447375"))
+			//System.out.println("11");
+		//source = "<a id=\"_ctl0_CPH2_Pager2_HL_PreImg\" href=\"/userid/395421/car/304906/3517892/note.aspx\"><img id=\"_ctl0_CPH2_Pager2_Img_Pre\" title=\">>                         車検2015\" onerror=\"Minkara.NoPhoto_109(this);HidePhotosIfBothEmpty0();\" onload=\"HidePhotosIfBothEmpty0();\" src=\"http://cdn.snsimg.carview.co.jp/minkara/note/000/003/517/892/3517892/p1s.jpg?ct=d1d9f9a0bffa\" border=\"0\" /></a>";
+		//source = source.replaceAll("<[^>'\"]*['\"].*['\"].*?>", "");
+		//source = "<img src=\">\" name=\">\">";
+		source = sub_rule_03.matcher(source).replaceAll("");
+		source = sub_rule_04.matcher(source).replaceAll("");
+		//source = StringEscapeUtils.unescapeHtml(source);
 
-//		try {
-//			BufferedWriter bw = new BufferedWriter(new OutputStreamWriter(new FileOutputStream("/home/charles/Data/output/source/" + url_id + ".txt")));
-//			bw.write(source);
-//			bw.close();
-//		} catch (Exception e) {
-//			// TODO Auto-generated catch block
-//			e.printStackTrace();
-//		}
+		try {
+			BufferedWriter bw = new BufferedWriter(new OutputStreamWriter(new FileOutputStream("/home/charles/Data/output/source/" + url_id + ".txt")));
+			bw.write(source);
+			bw.close();
+		} catch (Exception e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
 		//System.out.println(source);
 		return source;
 	
@@ -137,6 +156,7 @@ public class TextExtract {
 		text.setLength(0);
 		
 		StringBuilder buffer = new StringBuilder();
+		try{
 		for (int i = 0; i < indexDistribution.size() - 1; i++) {
 			if (indexDistribution.get(i) >= threshold && ! boolstart) {
 				if (indexDistribution.get(i+1).intValue() != 0 
@@ -176,6 +196,11 @@ public class TextExtract {
 				boolstart = boolend = false;
 				first_read = true;
 			}
+		}
+		}
+		catch(Exception e){
+			System.out.println(e.toString());
+			//System.out.println(html);
 		}
 		
 		if (start >= end && !(first_read && (start>parse_stop_line)))
