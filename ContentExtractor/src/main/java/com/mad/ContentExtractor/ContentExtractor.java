@@ -2,10 +2,9 @@ package com.mad.ContentExtractor;
 
 import java.io.*;
 import java.net.*;
-//import java.net.URL;
-import java.nio.charset.Charset;
 
 import org.mozilla.universalchardet.UniversalDetector;
+import org.apache.commons.lang.StringEscapeUtils;
 import org.apache.http.*;
 import org.apache.http.client.config.RequestConfig;
 import org.apache.http.client.methods.CloseableHttpResponse;
@@ -15,11 +14,10 @@ import org.apache.http.impl.client.HttpClients;
 import org.apache.http.impl.client.LaxRedirectStrategy;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.*;
+import org.jsoup.parser.Parser;
 import org.jsoup.select.Elements;
 
 import java.util.ArrayList;
-import java.util.List;
-import java.util.regex.*;
 //import org.htmlcleaner.*;
 //import org.mozilla.intl.chardet.nsDetector;
 //import org.mozilla.intl.chardet.nsICharsetDetectionObserver;
@@ -36,8 +34,9 @@ public class ContentExtractor {
 				.setRedirectStrategy(new LaxRedirectStrategy())
 				.build();
 		requestConfig = RequestConfig.custom()
-				.setSocketTimeout(3000)
-				.setConnectTimeout(2000)
+				.setSocketTimeout(5000)
+				.setConnectTimeout(5000)
+				.setConnectionRequestTimeout(5000)
 				.build();
 		detector = new UniversalDetector(null);
 	}
@@ -71,7 +70,10 @@ public class ContentExtractor {
 				result = new ContentExtractor().getHTML(tokens[1].trim());
 				//System.out.println(result[3]);
 				if(result != null){
-					String main_text = te.parse(tokens[0], result[3]).trim();
+					
+					String main_text = "";
+					if(result[3] != null)
+						main_text = te.parse(tokens[0], result[3]).trim();
 					bw.write("\n<document id=\"" + tokens[0] + "\" url=\"" + tokens[1] + "\">\n");
 					bw.write("<title>" + result[0] + "</title>\n");
 					bw.write("<description>" + result[1] + "</description>\n");
@@ -103,9 +105,13 @@ public class ContentExtractor {
 		ArrayList url_info = readURL(strURL);
 		
 		if(url_info.get(0) == null) return null;
-
-		Document doc = Jsoup.parse((String)url_info.get(0));
+		//System.out.print(url_info.get(0));
+		Document doc = Jsoup.parse((String)url_info.get(0), "", Parser.xmlParser().setTrackErrors(0));
+		//doc.outputSettings().syntax(Document.OutputSettings.Syntax.xml);
+		//doc.outputSettings().escapeMode(Entities.EscapeMode.xhtml);
+		//doc.outputSettings().prettyPrint(false);
 		
+		//System.out.println(doc.outerHtml());
 		//check charset again
 		String detected_cs = doc.charset().name();
 		String page_cs_str = doc.select("meta[http-equiv=\"Content-Type\"]").attr("content");
@@ -128,54 +134,83 @@ public class ContentExtractor {
 		if(!detected_cs.equals(doc.charset().name())){
 			url_info.set(0, new String((byte[])url_info.get(1), detected_cs));
 			url_info.set(0, changeCharset((String)url_info.get(0), "UTF-8"));
-			doc = Jsoup.parse((String)url_info.get(0));
+			doc = Jsoup.parse((String)url_info.get(0), "", Parser.xmlParser().setTrackErrors(0));
 		}
+		
+		doc.outputSettings().prettyPrint(false);
+		
 		result[0] = doc.title();
 		result[1] = doc.select("meta[name=\"description\"]").attr("content");
 		result[2] = doc.select("meta[name=\"keywords\"]").attr("content");
 		
 		//Filtering unnecessary html tags
 		Element body = doc.select("body").first();
+		//System.out.println(body.outerHtml());
+		if(body == null){
+			result[3] = null;
+			return result;
+		}
+		//System.out.println(body.outerHtml());
+		//body.select("meta").remove();
 		//remove link block
-		Elements link_blocks = body.select("ol:has(a),ul:has(a),div:has(a)");
+		Elements link_blocks = body.select("div:has(a), span:has(a), ul:has(a)");
 		for(Element node:link_blocks){
-			int direct_a_num = node.select(">a").size();
 			int child_of_a=0;
-			int br_node_num = node.select("br").size();
+			int a_txt_num = 0;
 			Elements e_a = node.select("a");
-			int a_num = e_a.size();
 			for(Element a:e_a){
 				child_of_a += (a.getAllElements().size() - 1);
-			}		
-			double child_node_num = (double)(node.getAllElements().size() - 1 - child_of_a - a_num + direct_a_num - br_node_num);
-			if( a_num / child_node_num  > 0.7 ){
+				a_txt_num += StringEscapeUtils.unescapeHtml(a.text()).replaceAll("[\\s ]","").length();
+			}
+			//the number of tokens besides links
+			String node_txt = node.text();
+			node_txt = StringEscapeUtils.unescapeHtml(node_txt).replaceAll("[\\s ]", "");
+			if(node_txt.length() - a_txt_num >= 100)
+				continue;
+			
+			int direct_a_num = node.select(">a").size();
+			int a_num = e_a.size();
+			int br_node_num = node.select("br").size();
+			int span_node_num = node.select("span").size();
+
+			double child_node_num = Math.max(a_num, (double)(node.getAllElements().size() - 1 - child_of_a - a_num + direct_a_num - br_node_num - span_node_num));
+			if( a_num / child_node_num  > 0.5 ){
 				node.remove();//drop the link block
 			}
 		}
-		
-		body.select("[id~=(?i)(header|footer|ft|links|keywords|calendar|calender|rule|attention|banner|bn|navi|recommend){1}]").remove();
+		//System.out.println(body.outerHtml());
+		//remove topic blocks(for fc2)added in 2016/05/24
+		Elements topic_blocks = body.select("div:matchesOwn(^トピックス$)");
+		for(Element node:topic_blocks){
+			node.parent().remove();
+		}
+		//System.out.println(body.outerHtml());
+		body.select("[id~=(?i)(header|footer|ft|side|links|keywords|calendar|calender|rule|attention|banner|bn|navi|recommend|plugin|[_-]+ad[_-]+|^ad[_-]+|[_-]+ad$){1}]").remove();
 		//System.out.print(body.outerHtml());
-		body.select("[class~=(?i)(header|footer|links|calendar|calender|no_display|nodisplay|rule|attention|banner|bn|navi|month|recommend){1}]").remove();
+		body.select("[class~=(?i)(header|footer|links|calendar|calender|no_display|nodisplay|rule|attention|banner|bn|navi|month|recommend|plugin|[_-]+ad[_-]+|^ad[_-]+|[_-]+ad$){1}]").remove();
 		//System.out.print(body.outerHtml());
 		body.select("[style~=(?i)(display[\\s]*:[\\s]*none|visible[\\s]*:[\\s]*hidden){1}]").remove();
 		//System.out.print(body.outerHtml());
-		body.select("link, select, noscript, head, header, script, style, footer, time, small, meta, h1, h2, h3, h4, h5, h6").remove();
-		body.select("iframe, textarea, input").remove();
+		body.select("select, noscript, head, header, script, style, footer, aside, time, small, h1, h2, h3, h4, h5, h6").remove();
+		//System.out.println(body.outerHtml());
+		body.select("form, iframe, textarea, input").remove();
+		body.select("span[data-tipso]").remove();
+		//body.select("table[class]")
 		//System.out.println(body.outerHtml());
 		//Document dd = Jsoup.parse("<body><t1>11<t11></t11></t1><t2><t2></t2></t2></body>");
 		//int test = dd.select("body").first().childNodeSize();
-		body.select("li:has(a), dt:has(a), dd:has(a)").remove();
+		//body.select("li:has(a), dt:has(a), dd:has(a)").remove();
 		//System.out.println(body.outerHtml());
 
 		//System.out.println(body.outerHtml());
 		//remove long text links
-		Elements noise_links = body.select("a");
-		for(Element node:noise_links){
-			if(node.html().length() >12)
-				node.remove();
-		}
+//		Elements noise_links = body.select("a");
+//		for(Element node:noise_links){
+//			if(node.html().length() > 12)
+//				node.remove();
+//		}
 		//remove pagelink
-		body.select("a:matches(^\\d+$|前へ|次へ|戻る|トップページ|ホーム|記事|もっと見る|利用規約|案内|問い合わせ|プライバシー)").remove();
+		body.select("a:matches(前\\d+|次\\d+|最新\\d+|^\\d+$|前へ|次へ|戻る|トップページ|ホーム|記事|もっと見る|利用規約|案内|問い合わせ|プライバシー|スマホ版)").remove();
 		//remove nodes whose font-size < 10(px) | 7.5(pt) | 0.625(em)
 		Elements nodes_with_font_size = body.select("[style~=(?i)(font-size){1}]");
 		for(Element node:nodes_with_font_size){
