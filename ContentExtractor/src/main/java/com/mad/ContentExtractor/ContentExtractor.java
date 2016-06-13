@@ -5,6 +5,18 @@ import java.net.*;
 
 import org.mozilla.universalchardet.UniversalDetector;
 import org.apache.commons.lang.StringEscapeUtils;
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.hbase.HBaseConfiguration;
+import org.apache.hadoop.hbase.TableName;
+import org.apache.hadoop.hbase.client.BufferedMutator;
+import org.apache.hadoop.hbase.client.Connection;
+import org.apache.hadoop.hbase.client.ConnectionFactory;
+import org.apache.hadoop.hbase.client.Get;
+import org.apache.hadoop.hbase.client.Put;
+import org.apache.hadoop.hbase.client.Result;
+import org.apache.hadoop.hbase.client.Table;
+import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.http.*;
 import org.apache.http.client.config.RequestConfig;
 import org.apache.http.client.methods.CloseableHttpResponse;
@@ -12,6 +24,10 @@ import org.apache.http.client.methods.HttpGet;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClients;
 import org.apache.http.impl.client.LaxRedirectStrategy;
+import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
+import org.codelibs.neologd.ipadic.lucene.analysis.ja.JapaneseTokenizer;
+import org.codelibs.neologd.ipadic.lucene.analysis.ja.tokenattributes.BaseFormAttribute;
+import org.codelibs.neologd.ipadic.lucene.analysis.ja.tokenattributes.PartOfSpeechAttribute;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.*;
 import org.jsoup.parser.Parser;
@@ -40,9 +56,105 @@ public class ContentExtractor {
 				.build();
 		detector = new UniversalDetector(null);
 	}
-	public static void main(String[] args) throws IOException {
+	public static void main(String[] args) {
 		// TODO Auto-generated method stub
 		long time = System.currentTimeMillis();
+		ContentExtractor ce = new ContentExtractor();
+		try{
+			//ce.forTest();
+			ce.extract();
+		}
+		catch(Exception e){
+			e.printStackTrace();
+		}
+		System.out.println("Run Time: " + (System.currentTimeMillis()-time)/1000 + "s");
+	}
+	
+	public boolean extract(){
+		String line = null;
+		Configuration hbase_config = HBaseConfiguration.create();
+		TextExtract te = new TextExtract();
+		JapaneseTokenizer tokenizer = new JapaneseTokenizer(null, false, JapaneseTokenizer.Mode.NORMAL);
+		CharTermAttribute term = tokenizer.addAttribute(CharTermAttribute.class);
+		BaseFormAttribute base_form = tokenizer.addAttribute(BaseFormAttribute.class);
+		PartOfSpeechAttribute partOfSpeech = tokenizer.addAttribute(PartOfSpeechAttribute.class);
+		
+		hbase_config.addResource(new Path("/usr/local/hadoop-2.5.0-cdh5.3.9/etc/hadoop/core-site.xml"));
+		hbase_config.addResource(new Path("/usr/local/hadoop-2.5.0-cdh5.3.9/etc/hadoop/hdfs-site.xml"));
+		hbase_config.addResource(new Path("/usr/local/hadoop-2.5.0-cdh5.3.9/etc/hadoop/hbase-site.xml"));
+		hbase_config.set("hbase.client.write.buffer","134217728");
+		hbase_config.set("hbase.client.keyvalue.maxsize","0");
+		System.setProperty("HADOOP_USER_NAME", "hdfs");
+		
+		try{
+			BufferedReader br = new BufferedReader(new InputStreamReader(new FileInputStream("/home/charles/Data/input/url_01.csv")));
+			Connection conn = ConnectionFactory.createConnection(hbase_config);
+			BufferedMutator mutator = conn.getBufferedMutator(TableName.valueOf("url_info"));
+			Table table = conn.getTable(TableName.valueOf("url_info"));
+			
+			line = br.readLine();
+			while(line != null && !"".equals(line)){
+				long time = System.currentTimeMillis();
+				String keyword_list = "";
+				String[] tokens = line.split(",");
+				Get g = new Get(Bytes.toBytes(tokens[0]));
+				Result rs = table.get(g);
+				String html = new String(rs.getValue(Bytes.toBytes("raw_html"), null), "UTF-8");
+				System.out.println("Run Time: " + (System.currentTimeMillis()-time) + "ms");
+				Document doc = Jsoup.parse(html, "", Parser.xmlParser().setTrackErrors(0));
+				String title = doc.title();
+				String description = doc.select("meta[name=\"description\"]").attr("content");
+				String keywords = doc.select("meta[name=\"keywords\"]").attr("content");
+				String body = tagFiltering(doc.select("body").first());
+				String main_text = te.parse(tokens[0], body);
+				tokenizer.setReader(new StringReader(main_text));
+				tokenizer.reset();
+				
+				Put p = new Put(Bytes.toBytes("test"));	
+				
+				while(tokenizer.incrementToken()){
+					String speech = partOfSpeech.getPartOfSpeech();
+					String base = base_form.getBaseForm();
+					System.out.println(term.toString() + "\t" + base + "\t" +  speech);
+					if((speech.contains("名詞") && !speech.contains("数")) || speech.contains("形容詞")){
+						if(term.length() > 1){
+							if(base != null)
+								keyword_list += base + ",";
+							else
+								keyword_list += term.toString() + ",";
+						}
+					}
+						
+				}
+				p.addColumn(Bytes.toBytes("raw_html"), null, Bytes.toBytes(keyword_list));
+				table.put(p);
+				System.out.println(keyword_list);
+				System.out.println("Run Time: " + (System.currentTimeMillis()-time) + "ms");
+			}
+			br.close();
+			mutator.close();
+			table.close();
+			conn.close();
+			
+		}
+		catch(Exception e){
+			e.printStackTrace();
+		}
+		return true;
+	}
+	
+	public boolean writeToHBase(BufferedMutator table, String row_key, String family, String qualifier, String value) throws IOException{
+		Put p = new Put(Bytes.toBytes(row_key));
+		if(qualifier == null)
+			p.addColumn(Bytes.toBytes(family), null, Bytes.toBytes(value));
+		else
+			p.addColumn(Bytes.toBytes(family), Bytes.toBytes(qualifier), Bytes.toBytes(value));
+		table.mutate(p);
+		
+		return true;
+	}
+	
+	public void forTest() throws IOException{
 		String line = null;
 		String[] tokens;
 		String[] result;
@@ -67,7 +179,7 @@ public class ContentExtractor {
 			tokens = line.split(",");
 			try {
 				//System.out.println(tokens[0]);
-				result = new ContentExtractor().getHTML(tokens[1].trim());
+				result = getHTML(tokens[1].trim());
 				//System.out.println(result[3]);
 				if(result != null){
 					
@@ -96,8 +208,7 @@ public class ContentExtractor {
 		}
 		bw.write("</data>");
 		br.close();
-		bw.close();
-		System.out.println("Run Time: " + (System.currentTimeMillis()-time)/1000 + "s");
+		bw.close();		
 	}
 
 	public String[] getHTML(String strURL) throws Exception {
@@ -145,15 +256,23 @@ public class ContentExtractor {
 		
 		//Filtering unnecessary html tags
 		Element body = doc.select("body").first();
+		
+		//pass the html contents after filtering
+		result[3] = tagFiltering(body);
+		//System.out.println(result[3]);
+		
+		return result;
+	}
+	
+	private String tagFiltering(Element html_body){
 		//System.out.println(body.outerHtml());
-		if(body == null){
-			result[3] = null;
-			return result;
+		if(html_body == null){
+			return null;
 		}
 		//System.out.println(body.outerHtml());
 		//body.select("meta").remove();
 		//remove link block
-		Elements link_blocks = body.select("div:has(a), span:has(a), ul:has(a)");
+		Elements link_blocks = html_body.select("div:has(a), span:has(a), ul:has(a)");
 		for(Element node:link_blocks){
 			int child_of_a=0;
 			int a_txt_num = 0;
@@ -180,21 +299,21 @@ public class ContentExtractor {
 		}
 		//System.out.println(body.outerHtml());
 		//remove topic blocks(for fc2)added in 2016/05/24
-		Elements topic_blocks = body.select("div:matchesOwn(^トピックス$)");
+		Elements topic_blocks = html_body.select("div:matchesOwn(^トピックス$)");
 		for(Element node:topic_blocks){
 			node.parent().remove();
 		}
 		//System.out.println(body.outerHtml());
-		body.select("[id~=(?i)(header|footer|ft|side|links|keywords|calendar|calender|rule|attention|banner|bn|navi|recommend|plugin|[_-]+ad[_-]+|^ad[_-]+|[_-]+ad$){1}]").remove();
+		html_body.select("[id~=(?i)(header|footer|ft|side|links|keywords|calendar|calender|rule|attention|banner|bn|navi|recommend|plugin|[_-]+ad[_-]+|^ad[_-]+|[_-]+ad$){1}]").remove();
 		//System.out.print(body.outerHtml());
-		body.select("[class~=(?i)(header|footer|links|calendar|calender|no_display|nodisplay|rule|attention|banner|bn|navi|month|recommend|plugin|[_-]+ad[_-]+|^ad[_-]+|[_-]+ad$){1}]").remove();
+		html_body.select("[class~=(?i)(header|footer|links|calendar|calender|no_display|nodisplay|rule|attention|banner|bn|navi|month|recommend|plugin|[_-]+ad[_-]+|^ad[_-]+|[_-]+ad$){1}]").remove();
 		//System.out.print(body.outerHtml());
-		body.select("[style~=(?i)(display[\\s]*:[\\s]*none|visible[\\s]*:[\\s]*hidden){1}]").remove();
+		html_body.select("[style~=(?i)(display[\\s]*:[\\s]*none|visible[\\s]*:[\\s]*hidden){1}]").remove();
 		//System.out.print(body.outerHtml());
-		body.select("select, noscript, head, header, script, style, footer, aside, time, small, h1, h2, h3, h4, h5, h6").remove();
+		html_body.select("select, noscript, head, header, script, style, footer, aside, time, small, h1, h2, h3, h4, h5, h6").remove();
 		//System.out.println(body.outerHtml());
-		body.select("form, iframe, textarea, input").remove();
-		body.select("span[data-tipso]").remove();
+		html_body.select("form, iframe, textarea, input").remove();
+		html_body.select("span[data-tipso]").remove();
 		//body.select("table[class]")
 		//System.out.println(body.outerHtml());
 		//Document dd = Jsoup.parse("<body><t1>11<t11></t11></t1><t2><t2></t2></t2></body>");
@@ -204,15 +323,15 @@ public class ContentExtractor {
 
 		//System.out.println(body.outerHtml());
 		//remove long text links
-//		Elements noise_links = body.select("a");
-//		for(Element node:noise_links){
-//			if(node.html().length() > 12)
-//				node.remove();
-//		}
+//				Elements noise_links = body.select("a");
+//				for(Element node:noise_links){
+//					if(node.html().length() > 12)
+//						node.remove();
+//				}
 		//remove pagelink
-		body.select("a:matches(前\\d+|次\\d+|最新\\d+|^\\d+$|前へ|次へ|戻る|トップページ|ホーム|記事|もっと見る|利用規約|案内|問い合わせ|プライバシー|スマホ版)").remove();
+		html_body.select("a:matches(前\\d+|次\\d+|最新\\d+|^\\d+$|前へ|次へ|戻る|トップページ|ホーム|記事|もっと見る|利用規約|案内|問い合わせ|プライバシー|スマホ版)").remove();
 		//remove nodes whose font-size < 10(px) | 7.5(pt) | 0.625(em)
-		Elements nodes_with_font_size = body.select("[style~=(?i)(font-size){1}]");
+		Elements nodes_with_font_size = html_body.select("[style~=(?i)(font-size){1}]");
 		for(Element node:nodes_with_font_size){
 			String[] str = node.attr("style").toLowerCase().split(";");
 			for(String style:str){
@@ -237,11 +356,7 @@ public class ContentExtractor {
 			}
 		}
 		
-		//pass the html contents after filtering
-		result[3] = body.outerHtml();
-		//System.out.println(result[3]);
-		
-		return result;
+		return html_body.outerHtml();
 	}
 	
 	private ArrayList readURL(String strURL) throws Exception{

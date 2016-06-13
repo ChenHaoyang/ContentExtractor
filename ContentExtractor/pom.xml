@@ -46,6 +46,17 @@
 	<artifactId>fluent-hc</artifactId>
 	<version>4.5.2</version>
 </dependency>
-	
+<!-- http://mvnrepository.com/artifact/org.codelibs/elasticsearch-analysis-kuromoji-neologd -->
+<dependency>
+    <groupId>org.codelibs</groupId>
+    <artifactId>elasticsearch-analysis-kuromoji-neologd</artifactId>
+    <version>2.3.0</version>
+</dependency>
+<!-- http://mvnrepository.com/artifact/org.apache.hbase/hbase-client -->
+<dependency>
+    <groupId>org.apache.hbase</groupId>
+    <artifactId>hbase-client</artifactId>
+    <version>1.2.1</version>
+</dependency>
   </dependencies>
 </project>
