@@ -55,7 +55,7 @@ public class ContentExtractor {
 		UserDictionary usrDict = null;
 		
 		if(isUsrDict){
-			usrDict = UserDictionary.open(new BufferedReader(new InputStreamReader(new FileInputStream("dict/user_dict.txt"))));
+			usrDict = UserDictionary.open(new BufferedReader(new InputStreamReader(new FileInputStream(this.getClass().getResource("/user_dict.txt").getPath()))));
 		}
 		
 		switch(mode){
@@ -85,30 +85,30 @@ public class ContentExtractor {
 		this(isUsrDict, mode, 4, 5, 0.8, 100);
 	}
 	
-//	public static void main(String[] args) {
-//		// TODO Auto-generated method stub
-//		long time = System.currentTimeMillis();
-//		
-//		try{
-//			ContentExtractor ce = new ContentExtractor(true, 0);
-//			String test_data = "<html><meta http-equiv=\"Content-Type\" content=\"text/html; charset=utf-8\"><title>JTB、パスポート番号含む793万人分の個人情報流出--メールの添付ファイルから感染</title>"
-//					+ "<meta name=\"description\" content=\"　ジェイティービー（JTB）は6月14日、同社子会社でEC事業を展開するi.JTBのサーバに\">"
-//					+ "<meta name=\"keywords\" content=\"ニュース,IT・科学,IT総合\">"
-//					+ "<body>銀聯売上西国分寺駅パスポート番号パスポート番号パスポート番号</body></html>";
-//			//ce.forTest();
-//			HashMap re = ce.extract(test_data);
-//			System.out.println(re.get("meta_title"));
-//			System.out.println(re.get("meta_description"));
-//			System.out.println(re.get("meta_keywords"));
-//			System.out.println(re.get("main_text"));
-//			System.out.println(re.get("keywords"));
-//			
-//		}
-//		catch(Exception e){
-//			e.printStackTrace();
-//		}
-//		System.out.println("Run Time: " + (System.currentTimeMillis()-time)/1000 + "s");
-//	}
+	public static void main(String[] args) {
+		// TODO Auto-generated method stub
+		long time = System.currentTimeMillis();
+		
+		try{
+			ContentExtractor ce = new ContentExtractor(true, 0);
+			String test_data = "<html><meta http-equiv=\"Content-Type\" content=\"text/html; charset=utf-8\"><title>JTB、パスポート番号含む793万人分の個人情報流出--メールの添付ファイルから感染</title>"
+					+ "<meta name=\"description\" content=\"　ジェイティービー（JTB）は6月14日、同社子会社でEC事業を展開するi.JTBのサーバに\">"
+					+ "<meta name=\"keywords\" content=\"ニュース,IT・科学,IT総合\">"
+					+ "<body>銀聯売上西国分寺駅パスポート番号パスポート番号パスポート番号</body></html>";
+			//ce.forTest();
+			HashMap re = ce.extract(test_data);
+			System.out.println(re.get("meta_title"));
+			System.out.println(re.get("meta_description"));
+			System.out.println(re.get("meta_keywords"));
+			System.out.println(re.get("main_text"));
+			System.out.println(re.get("keywords"));
+			
+		}
+		catch(Exception e){
+			e.printStackTrace();
+		}
+		System.out.println("Run Time: " + (System.currentTimeMillis()-time)/1000 + "s");
+	}
 	
 	/**
 	 * @param html The input HTML string
