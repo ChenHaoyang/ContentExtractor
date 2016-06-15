@@ -12,49 +12,43 @@ import org.apache.commons.lang.StringEscapeUtils;;
 
 public class TextExtract {
 	
-	private List<String> lines;
-	private final static int blocksWidth=4;
-	private final static int min_tokens = 5;
-	private long threshold;
-	private String html;
-	private static boolean flag;
-	private int start;
-	private int end, max_lines;
-	private double main_ratio;
-	private StringBuilder text;
-	private ArrayList<Integer> indexDistribution;
-	private String m_url_id;
-	private BufferedWriter m_bw, m_bw_block, m_bw_f2;
+	private List<String> m_lines;
+	private static int m_blocksWidth=4;
+	private static int m_minTokens = 5;
+	private long m_threshold;
+	private String m_html;
+	private int m_maxLines;
+	private double m_mainRatio;
+	private StringBuilder m_text;
+	private ArrayList<Integer> m_indexDistribution;
 	
 	public TextExtract() {
-		lines = new ArrayList<String>();
-		indexDistribution = new ArrayList<Integer>();
-		text = new StringBuilder();
-		flag = true;
-		threshold	= 60;  
-		main_ratio = 0.8;
-		//delay_ratio = 0.5;
-		max_lines = 100;
-		try {
-			m_bw = new BufferedWriter(new OutputStreamWriter(new FileOutputStream("/home/charles/Data/output/source/lines.txt")));
-			m_bw_block = new BufferedWriter(new OutputStreamWriter(new FileOutputStream("/home/charles/Data/output/source/block.txt")));
-			m_bw_f2 = new BufferedWriter(new OutputStreamWriter(new FileOutputStream("/home/charles/Data/output/source/f2.txt")));
-		} catch (FileNotFoundException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		}
+		m_lines = new ArrayList<String>();
+		m_indexDistribution = new ArrayList<Integer>();
+		m_text = new StringBuilder();
+		m_mainRatio = 0.8;
+		m_maxLines = 100;
 	}
 	
-	public String parse(String url_id, String _html) {
-		return parse(url_id, _html, flag);
+	public TextExtract(int blocks_width, int min_tokens, double main_ratio, int max_lines){
+		m_lines = new ArrayList<String>();
+		m_indexDistribution = new ArrayList<Integer>();
+		m_text = new StringBuilder();
+		m_blocksWidth = blocks_width;
+		m_minTokens = min_tokens;
+		m_mainRatio = main_ratio;
+		m_maxLines = max_lines;
 	}
 
-	public String parse(String url_id, String _html, boolean _flag) {
-		flag = _flag;
-		html = _html;
-		m_url_id = url_id;
-		html = preProcess(url_id, html.replaceAll("[\b\t\r\n\f]", ""));
-		String tmp = html;
+	/**
+	 * @param _html
+	 * @return
+	 */
+	public String parse(String _html) {
+		if(_html==null) return "";
+		m_html = _html;
+		m_html = preProcess(m_html.replaceAll("[\b\t\r\n\f]", ""));
+		String tmp = m_html;
 		if(!tmp.replaceAll("[\b\t\r\n\f\\s]", "").equals(""))
 			return getText();
 		else
@@ -83,7 +77,7 @@ public class TextExtract {
 	//private static Pattern sub_rule_03 = Pattern.compile("<[^>]*['\"].*['\"].*?>", Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
 
 
-	private static String preProcess(String url_id, String source) {
+	private static String preProcess(String source) {
 		String n_str="";
 		//System.out.println(source);
 		//source = "<div id=\"header_ad\"><script></script><div></div></div><div></div>";
@@ -101,7 +95,7 @@ public class TextExtract {
 		source = sub_rule_02.matcher(source).replaceAll("\n");
 		//System.out.println(source);
 		source = sub_rule_05.matcher(source).replaceAll("\n");
-		for(int i=1; i<blocksWidth;i++)
+		for(int i=1; i<m_blocksWidth;i++)
 			n_str += "\n";
 		source = sub_rule_06.matcher(source).replaceAll(n_str);
 		//System.out.println(source);
@@ -109,16 +103,8 @@ public class TextExtract {
 		//System.out.println(source);
 		source = StringEscapeUtils.unescapeHtml(source);
 
-		try {
-			BufferedWriter bw = new BufferedWriter(new OutputStreamWriter(new FileOutputStream("/home/charles/Data/output/source/" + url_id + ".txt")));
-			bw.write(source);
-			bw.close();
-		} catch (Exception e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		}
 		//System.out.println(source);
-		for(int i=0; i < blocksWidth-1; i++)
+		for(int i=0; i < m_blocksWidth-1; i++)
 			source = source + "\n";
 		return source;
 	
@@ -130,27 +116,13 @@ public class TextExtract {
 		int max_f2_idx=0;
 		int list_size = data.size();
 		
-		m_bw_f2.write(m_url_id + ",");
-		m_bw_block.write(m_url_id + ",");
-		for(int i=0; i < list_size; i++){
-			m_bw_block.write(data.get(i) + ",");
-		}
-
 		Collections.sort(data);
 
 		switch(list_size){
 		case 1:
-			m_bw_f2.write("\n");
-			m_bw_block.write("\n");
-			m_bw_f2.flush();
-			m_bw_block.flush();
-			return Math.max(min_tokens, data.get(0));
+			return Math.max(m_minTokens, data.get(0));
 		case 2:
-			m_bw_f2.write("\n");
-			m_bw_block.write("\n");
-			m_bw_f2.flush();
-			m_bw_block.flush();
-			return Math.max(min_tokens, data.get(1));
+			return Math.max(m_minTokens, data.get(1));
 		case 3:
 			
 		}
@@ -164,10 +136,6 @@ public class TextExtract {
 //				f2 = (data.get(i)-2*data.get(i-1)+data.get(i-2));
 //			else
 			f2 = (data.get(i-1)-2*data.get(i)+data.get(i+1));
-			if(i==1 || i==list_size-2)
-				m_bw_f2.write(f2 + "," + f2 + ",");
-			else
-				m_bw_f2.write(f2 + ",");
 			//if the point of list_size-2 got the max value, then we take the last point.(for safety reason)
 			if(f2 > max_f2){
 				max_f2 = f2;
@@ -178,11 +146,7 @@ public class TextExtract {
 		if(max_f2_idx == list_size-2 || list_size == 3)
 			max_f2_idx = list_size - 1;
 		
-		m_bw_f2.write("\n");
-		m_bw_block.write("\n");
-		m_bw_f2.flush();
-		m_bw_block.flush();
-		return Math.max(min_tokens, data.get(max_f2_idx));
+		return Math.max(m_minTokens, data.get(max_f2_idx));
 	}
 //	private int calThreshold(ArrayList<Integer> data){
 //		double min_dbi = Double.MAX_VALUE;
@@ -260,7 +224,7 @@ public class TextExtract {
 			sum += data.get(len-i);
 		}
 		
-		return Math.max(1,sum / (n*blocksWidth));
+		return Math.max(1,sum / (n*m_blocksWidth));
 	}
 	
 	private int getCharacterNum(String str){
@@ -274,37 +238,37 @@ public class TextExtract {
 	}
 	
 	private String getText() {
+		int start, end;
 		ArrayList<Long> list_for_sort = new ArrayList<Long>();//for sort
 		ArrayList<ArrayList> block_list = new ArrayList();
-		lines = Arrays.asList(html.split("\n",-1));
+		m_lines = Arrays.asList(m_html.split("\n",-1));
 
-		text.setLength(0);
+		m_text.setLength(0);
 		
 		int line_count=0;
 		//int max_line_tokens=0;
-		int parse_max_line = (int)Math.ceil(lines.size()*main_ratio);
+		int parse_max_line = (int)Math.ceil(m_lines.size()*m_mainRatio);
 		//int parse_stop_line=0;
-		String[] tokens = new String[lines.size()];
+		String[] tokens = new String[m_lines.size()];
 
-		indexDistribution.clear();
+		m_indexDistribution.clear();
 		
-		for(int i=lines.size()-1; i>(lines.size() - blocksWidth); i--){
+		for(int i=m_lines.size()-1; i>(m_lines.size() - m_blocksWidth); i--){
 			tokens[i] = "";
 		}
 		try{
-			m_bw.write(m_url_id + ",");
-			for (int i = 0; i < lines.size() - blocksWidth + 1; i++) {
+			for (int i = 0; i < m_lines.size() - m_blocksWidth + 1; i++) {
 				int wordsNum = 0;
-				for (int j = i; j < i + blocksWidth; j++) { 
+				for (int j = i; j < i + m_blocksWidth; j++) { 
 					//lines.set(j, lines.get(j).trim());
-					tokens[j] = lines.get(j).replaceAll("[\\s ]", "");
+					tokens[j] = m_lines.get(j).replaceAll("[\\s ]", "");
 					tokens[j] = tokens[j].replaceAll("[^\\w\uFF10-\uFF19\uFF21-\uFF3A\uFF41-\uFF5A\u4E00-\u9FFF\u3040-\u309F\u30A0-\u30FF]", "");
 					wordsNum += tokens[j].length();
 					//cal_flag = false;
 				}
 				
-				wordsNum = (int)Math.round((double)wordsNum / (double)blocksWidth);
-				indexDistribution.add(wordsNum);
+				wordsNum = (int)Math.round((double)wordsNum / (double)m_blocksWidth);
+				m_indexDistribution.add(wordsNum);
 				//list_for_sort.add(wordsNum);
 				
 				//find the longest text within the main_ratio area
@@ -312,12 +276,9 @@ public class TextExtract {
 //					parse_stop_line = i;
 //					max_line_tokens = wordsNum;
 //				}
-				
-				m_bw.write(wordsNum + ",");
+		
 				//System.out.println(wordsNum);
 			}
-			
-			m_bw.write("\n");
 		}
 		catch(Exception e){
 			e.printStackTrace();
@@ -334,7 +295,7 @@ public class TextExtract {
 		start = -1; end = -1;
 		boolean boolstart = false, boolend = false, first_read = false;
 		StringBuilder buffer = new StringBuilder();
-		int line_number = indexDistribution.size();
+		int line_number = m_indexDistribution.size();
 		long block_max_tokens = 0;
 		long block_token_sum = 0;
 		
@@ -344,16 +305,16 @@ public class TextExtract {
 					boolstart = true;
 					start = i;
 					block_token_sum += tokens[i].length();
-					if(indexDistribution.get(i) > block_max_tokens)
-						block_max_tokens = indexDistribution.get(i);
+					if(m_indexDistribution.get(i) > block_max_tokens)
+						block_max_tokens = m_indexDistribution.get(i);
 					//System.out.println("start: " + start);
 					continue;
 				}
 				if (boolstart) {
 					block_token_sum += tokens[i].length();
-					if(indexDistribution.get(i) > block_max_tokens)
-						block_max_tokens = indexDistribution.get(i);
-					if (indexDistribution.get(i) == 0) {
+					if(m_indexDistribution.get(i) > block_max_tokens)
+						block_max_tokens = m_indexDistribution.get(i);
+					if (m_indexDistribution.get(i) == 0) {
 						end = i;
 						ArrayList tmp_list = new ArrayList();
 						tmp_list.add(start);
@@ -407,13 +368,13 @@ public class TextExtract {
 				//list_for_sort.add(block_token_sum);
 				//total_sum += block_max_tokens;
 			}
-			threshold = calThreshold(list_for_sort);
+			m_threshold = calThreshold(list_for_sort);
 			//start to choose blocks
 			for(ArrayList block:block_list){
 				long b_max_tokens = (Long)block.get(2);
 				long b_token_sum = (Long)block.get(3);
 				
-				if(b_max_tokens >= threshold){
+				if(b_max_tokens >= m_threshold){
 					int b_start = (Integer)block.get(0);
 					int b_end = (Integer)block.get(1);
 					
@@ -425,20 +386,19 @@ public class TextExtract {
 					for (int ii = b_start; ii < b_end; ii++) {
 						String txt = tokens[ii];
 						if (txt.length() == 0) continue;
-						if(line_count > max_lines)
+						if(line_count > m_maxLines)
 							break;
 						if(!txt.matches(".*(記事一覧|利用規約|Copyright)+.*")){
-							buffer.append(lines.get(ii).trim() + "\n");
+							buffer.append(m_lines.get(ii).trim() + "\n");
 							line_count++;
 						}
 					}
 					String str = buffer.toString();
-					text.append(str);				
+					m_text.append(str);				
 				}
 			}
 		}
 		catch(Exception e){
-			System.out.println(m_url_id);
 			System.out.println(e.toString());
 		}
 		//for the final iteration
@@ -466,7 +426,7 @@ public class TextExtract {
 		
 		//if(text.length() == 0)
 		//	return lines.get(parse_stop_line);
-		return text.toString();
+		return m_text.toString();
 	}
 /*	
 	public static void main(String[] args)
