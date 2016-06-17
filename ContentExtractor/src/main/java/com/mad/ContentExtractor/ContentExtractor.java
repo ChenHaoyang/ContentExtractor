@@ -4,8 +4,12 @@ import java.io.*;
 
 import org.apache.commons.lang.StringEscapeUtils;
 import org.apache.lucene.analysis.TokenStream;
+import org.apache.lucene.analysis.Tokenizer;
+import org.apache.lucene.analysis.core.LowerCaseFilter;
+import org.apache.lucene.analysis.core.StopFilter;
 import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 import org.codelibs.neologd.ipadic.lucene.analysis.ja.JapaneseAnalyzer;
+import org.codelibs.neologd.ipadic.lucene.analysis.ja.JapanesePartOfSpeechStopFilter;
 import org.codelibs.neologd.ipadic.lucene.analysis.ja.JapaneseTokenizer;
 import org.codelibs.neologd.ipadic.lucene.analysis.ja.dict.UserDictionary;
 import org.codelibs.neologd.ipadic.lucene.analysis.ja.tokenattributes.BaseFormAttribute;
@@ -33,93 +37,164 @@ import java.util.HashMap;
  * @author charles
  *
  */
+/**
+ * @author charles
+ *
+ */
+/**
+ * @author charles
+ *
+ */
+/**
+ * @author charles
+ *
+ */
+/**
+ * @author charles
+ *
+ */
+/**
+ * @author charles
+ *
+ */
+/**
+ * @author charles
+ *
+ */
+/**
+ * @author charles
+ *
+ */
 public class ContentExtractor {
 
-	//private JapaneseTokenizer m_tokenizer;
+	private Tokenizer m_tokenizer;
 	private JapaneseAnalyzer m_analyzer;
 	private CharTermAttribute m_term;
 	private BaseFormAttribute m_baseForm;
 	private PartOfSpeechAttribute m_partOfSpeech;
 	private TextExtract m_textExtract;
+	private boolean m_lowerCase;
 	
-	public ContentExtractor(){
-		//m_tokenizer = new JapaneseTokenizer(null, true, JapaneseTokenizer.Mode.NORMAL);
-		m_analyzer = new JapaneseAnalyzer(null, JapaneseTokenizer.Mode.NORMAL, JapaneseAnalyzer.getDefaultStopSet(),JapaneseAnalyzer.getDefaultStopTags());
-//		m_term = m_tokenizer.addAttribute(CharTermAttribute.class);
-//		m_baseForm = m_tokenizer.addAttribute(BaseFormAttribute.class);
-//		m_partOfSpeech = m_tokenizer.addAttribute(PartOfSpeechAttribute.class);
-		m_textExtract = new TextExtract();
+	public ContentExtractor() throws FileNotFoundException, IOException{
+		this(false, true, true, 0, 4, 5, 0.8, 100);
 	}
 	
-	public ContentExtractor(boolean isUsrDict, int mode, int blocks_width, int min_tokens, double main_ratio, int max_lines) throws FileNotFoundException, IOException{
+	/**
+	 * @param isUsrDict whether using the user dictionary or not
+	 * @param discardPunctuation discard the punctuation during parsing 
+	 * @param lowerCase whether changing the alphabet to lower-case or not
+	 * @param mode specify the mode of tokenizer. (0:normal, 1:search, 2:extended)
+	 * @param blocks_width set the block width of the content extractor. (default: 4)
+	 * @param min_tokens set the minimal number of tokens that can be retrieved as contents. (default: 5)
+	 * @param main_ratio set the main content ratio. (default: 0.8)
+	 * @param max_lines set the maximal lines can be retrieved. (default: 100)
+	 * @author charles
+	 * @version 1.0.0
+	 * @throws FileNotFoundException throw exception if error happens
+	 * @throws IOException throw exception if error happens
+	 */
+	public ContentExtractor(boolean isUsrDict, boolean discardPunctuation, boolean lowerCase, int mode, int blocks_width, int min_tokens, double main_ratio, int max_lines) throws FileNotFoundException, IOException{
 		UserDictionary usrDict = null;
+		m_lowerCase = lowerCase;
 		
 		if(isUsrDict){
-			usrDict = UserDictionary.open(new BufferedReader(new InputStreamReader(new FileInputStream(this.getClass().getResource("/user_dict.txt").getPath()))));
+			usrDict = UserDictionary.open(new BufferedReader(new InputStreamReader(this.getClass().getResourceAsStream("/user_dict.txt"))));
 		}
 		
 		switch(mode){
 		case 0:
-			//m_tokenizer = new JapaneseTokenizer(null, discardPunctuation, JapaneseTokenizer.Mode.NORMAL);
-			m_analyzer = new JapaneseAnalyzer(usrDict, JapaneseTokenizer.Mode.NORMAL, JapaneseAnalyzer.getDefaultStopSet(),JapaneseAnalyzer.getDefaultStopTags());
+			m_tokenizer = new JapaneseTokenizer(usrDict, discardPunctuation, JapaneseTokenizer.Mode.NORMAL);
+			//m_analyzer = new JapaneseAnalyzer(usrDict, JapaneseTokenizer.Mode.NORMAL, JapaneseAnalyzer.getDefaultStopSet(),JapaneseAnalyzer.getDefaultStopTags());
 			break;
 		case 1:
-			//m_tokenizer = new JapaneseTokenizer(null, discardPunctuation, JapaneseTokenizer.Mode.SEARCH);
-			m_analyzer = new JapaneseAnalyzer(usrDict, JapaneseTokenizer.Mode.SEARCH, JapaneseAnalyzer.getDefaultStopSet(),JapaneseAnalyzer.getDefaultStopTags());
+			m_tokenizer = new JapaneseTokenizer(usrDict, discardPunctuation, JapaneseTokenizer.Mode.SEARCH);
+			//m_analyzer = new JapaneseAnalyzer(usrDict, JapaneseTokenizer.Mode.SEARCH, JapaneseAnalyzer.getDefaultStopSet(),JapaneseAnalyzer.getDefaultStopTags());
 			break;
 		case 2:
-			//m_tokenizer = new JapaneseTokenizer(null, discardPunctuation, JapaneseTokenizer.Mode.EXTENDED);
-			m_analyzer = new JapaneseAnalyzer(usrDict, JapaneseTokenizer.Mode.EXTENDED, JapaneseAnalyzer.getDefaultStopSet(),JapaneseAnalyzer.getDefaultStopTags());
+			m_tokenizer = new JapaneseTokenizer(usrDict, discardPunctuation, JapaneseTokenizer.Mode.EXTENDED);
+			//m_analyzer = new JapaneseAnalyzer(usrDict, JapaneseTokenizer.Mode.EXTENDED, JapaneseAnalyzer.getDefaultStopSet(),JapaneseAnalyzer.getDefaultStopTags());
 			break;
 		default:
-			//m_tokenizer = new JapaneseTokenizer(null, discardPunctuation, JapaneseTokenizer.Mode.NORMAL);
+			m_tokenizer = new JapaneseTokenizer(usrDict, discardPunctuation, JapaneseTokenizer.Mode.NORMAL);
 		}
-//		m_tokenizer = new JapaneseTokenizer(null, discardPunctuation, JapaneseTokenizer.Mode.NORMAL);
-//		m_term = m_tokenizer.addAttribute(CharTermAttribute.class);
-//		m_baseForm = m_tokenizer.addAttribute(BaseFormAttribute.class);
-//		m_partOfSpeech = m_tokenizer.addAttribute(PartOfSpeechAttribute.class);
+		//m_tokenizer = new JapaneseTokenizer(null, discardPunctuation, JapaneseTokenizer.Mode.NORMAL);
+		m_term = m_tokenizer.addAttribute(CharTermAttribute.class);
+		m_baseForm = m_tokenizer.addAttribute(BaseFormAttribute.class);
+		m_partOfSpeech = m_tokenizer.addAttribute(PartOfSpeechAttribute.class);
 		m_textExtract = new TextExtract(blocks_width, min_tokens, main_ratio, max_lines);
 	}
 	
-	public ContentExtractor(boolean isUsrDict, int mode) throws FileNotFoundException, IOException{
-		this(isUsrDict, mode, 4, 5, 0.8, 100);
-	}
-	
-	public static void main(String[] args) {
-		// TODO Auto-generated method stub
-		long time = System.currentTimeMillis();
-		
-		try{
-			ContentExtractor ce = new ContentExtractor(true, 0);
-			String test_data = "<html><meta http-equiv=\"Content-Type\" content=\"text/html; charset=utf-8\"><title>JTB、パスポート番号含む793万人分の個人情報流出--メールの添付ファイルから感染</title>"
-					+ "<meta name=\"description\" content=\"　ジェイティービー（JTB）は6月14日、同社子会社でEC事業を展開するi.JTBのサーバに\">"
-					+ "<meta name=\"keywords\" content=\"ニュース,IT・科学,IT総合\">"
-					+ "<body>銀聯売上西国分寺駅パスポート番号パスポート番号パスポート番号</body></html>";
-			//ce.forTest();
-			HashMap re = ce.extract(test_data);
-			System.out.println(re.get("meta_title"));
-			System.out.println(re.get("meta_description"));
-			System.out.println(re.get("meta_keywords"));
-			System.out.println(re.get("main_text"));
-			System.out.println(re.get("keywords"));
-			
-		}
-		catch(Exception e){
-			e.printStackTrace();
-		}
-		System.out.println("Run Time: " + (System.currentTimeMillis()-time)/1000 + "s");
+	/**
+	 * @param isUsrDict whether using the user dictionary or not
+	 * @param discardPunctuation discard the punctuation during parsing 
+	 * @param lowerCase whether changing the alphabet to lower-case or not
+	 * @param mode specify the mode of tokenizer. (0:normal, 1:search, 2:extended)
+	 * @author charles
+	 * @version 1.0.0
+	 * @throws FileNotFoundException throw exception if error happens
+	 * @throws IOException throw exception if error happens
+	 */
+	public ContentExtractor(boolean isUsrDict, boolean discardPunctuation, boolean lowerCase, int mode) throws FileNotFoundException, IOException{
+		this(isUsrDict, discardPunctuation, lowerCase, mode, 4, 5, 0.8, 100);
 	}
 	
 	/**
+	 * @param lowerCase specify the lower-case mode
+	 */
+	public void setLowerCase(boolean lowerCase){
+		m_lowerCase = lowerCase;
+	}
+	
+	/**
+	 * @return the current lower-case mode
+	 */
+	public boolean getlowerCase(){
+		return m_lowerCase;
+	}
+	
+//	public static void main(String[] args) {
+//		// TODO Auto-generated method stub
+//		
+//		//while(true){
+//		try{
+//			ContentExtractor ce = new ContentExtractor(true, true, true, 0);
+//			String test_data = "<html><meta http-equiv=\"Content-Type\" content=\"text/html; charset=utf-8\"><title>JTB、パスポート番号含む793万人分の個人情報流出--メールの添付ファイルから感染</title>"
+//					+ "<meta name=\"description\" content=\"　ジェイティービー（JTB）は6月14日、同社子会社でEC事業を展開するi.JTBのサーバに\">"
+//					+ "<meta name=\"keywords\" content=\"ニュース,IT・科学,IT総合\">"
+//					+ "<body>流出したのは、「JTBホームページ」「るるぶトラベル」「JAPANiCAN」で予約したユーザーに加え、JTBグループ内外のオンライン販売提携先でJTB商品を予約したユーザーの個人情報。ネットで予約後、店舗で精算したユーザーも対象となる。"
+//					+ "個人情報には、氏名（漢字、カタカナ、ローマ字）、性別、生年月日、メールアドレス、住所、郵便番号、電話番号、パスポート番号、パスポート取得日が含まれている。また、流出したパスポート番号とパスポート取得日のうち、現在有効なのは約4300件。クレジットカード番号や銀行口座情報、旅行予約の内容は含まれていないとしている。</body></html>";
+//			//ce.forTest();
+//			long time = System.currentTimeMillis();
+//			HashMap re = ce.extract(test_data);
+//			System.out.println("Run Time: " + (System.currentTimeMillis()-time) + "ms");
+//			System.out.println(re.get("meta_title"));
+//			System.out.println(re.get("meta_description"));
+//			System.out.println(re.get("meta_keywords"));
+//			System.out.println(re.get("main_text"));
+//			System.out.println(re.get("keywords"));
+//			
+//		}
+//		catch(Exception e){
+//			e.printStackTrace();
+//		}
+//		//}
+//		
+//	}
+	
+	/**
 	 * @param html The input HTML string
-	 * @return a HashMap with 5 elements. 
-	 * key values:("meta_title", "meta_description", "meta_keywords", "main_text", "keywords")
+	 * @return a HashMap with 5 elements. key values:("meta_title", "meta_description", "meta_keywords", "main_text", "keywords")
 	 * @author charles
 	 * @version 1.0.0
-	 * @throws Exception 
+	 * @throws Exception throw exception if error happens 
 	 */
-	public HashMap<String, String> extract(String html) throws Exception{
+	public HashMap<String, String> analyse(String html) throws Exception{
+		return extract(html);
+	}
+	
+	private HashMap<String, String> extract(String html) throws Exception{
 		String keyword_list = "";
+		TokenStream tokenStream;
 		HashMap<String, String> result = new HashMap<String, String>();
 		
 		Document doc = Jsoup.parse(html, "", Parser.xmlParser().setTrackErrors(0));
@@ -129,14 +204,18 @@ public class ContentExtractor {
 		String body = tagFiltering(doc.select("body").first());
 		String main_text = m_textExtract.parse(body);
 		//m_tokenizer.setReader(new StringReader(main_text + " " + meta_title + " " + meta_description + " " + meta_keywords));
-		//m_tokenizer.setReader(new StringReader(main_text));
-		//m_tokenizer.reset();
-		TokenStream tokenStream = m_analyzer.tokenStream("", main_text);
-		m_term = tokenStream.addAttribute(CharTermAttribute.class);
-		m_baseForm = tokenStream.addAttribute(BaseFormAttribute.class);
-		m_partOfSpeech = tokenStream.addAttribute(PartOfSpeechAttribute.class);
+		m_tokenizer.setReader(new StringReader(main_text));
+		tokenStream = new StopFilter(m_tokenizer, JapaneseAnalyzer.getDefaultStopSet());
+		tokenStream = new JapanesePartOfSpeechStopFilter(tokenStream, JapaneseAnalyzer.getDefaultStopTags());
+		if(m_lowerCase)
+			tokenStream = new LowerCaseFilter(tokenStream);
 		tokenStream.reset();
-
+//		TokenStream tokenStream = m_analyzer.tokenStream("", main_text);
+//		m_term = tokenStream.addAttribute(CharTermAttribute.class);
+//		m_baseForm = tokenStream.addAttribute(BaseFormAttribute.class);
+//		m_partOfSpeech = tokenStream.addAttribute(PartOfSpeechAttribute.class);
+//		tokenStream.reset();
+		
 		while(tokenStream.incrementToken()){
 			String speech = m_partOfSpeech.getPartOfSpeech();
 			String base = m_baseForm.getBaseForm();
@@ -164,127 +243,6 @@ public class ContentExtractor {
 			
 		return result;
 	}
-	
-//	public boolean writeToHBase(BufferedMutator table, String row_key, String family, String qualifier, String value) throws IOException{
-//		Put p = new Put(Bytes.toBytes(row_key));
-//		if(qualifier == null)
-//			p.addColumn(Bytes.toBytes(family), null, Bytes.toBytes(value));
-//		else
-//			p.addColumn(Bytes.toBytes(family), Bytes.toBytes(qualifier), Bytes.toBytes(value));
-//		table.mutate(p);
-//		
-//		return true;
-//	}
-	
-//	public void forTest() throws IOException{
-//		String line = null;
-//		String[] tokens;
-//		String[] result;
-//		BufferedReader br = null;
-//		BufferedWriter bw = null;
-//		TextExtract te = new TextExtract();
-//		HttpURLConnection.setFollowRedirects(true);
-//		
-//		//HtmlCleaner cleaner = new HtmlCleaner();
-//		try {
-//			br = new BufferedReader(new InputStreamReader(new FileInputStream("/home/charles/Data/input/url.csv")));
-//			bw = new BufferedWriter(new OutputStreamWriter(new FileOutputStream("/home/charles/Data/output/chen.txt")));
-//			bw.write("<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<data>");
-//			line = br.readLine();
-//		} catch (Exception e1) {
-//			// TODO Auto-generated catch block
-//			e1.printStackTrace();
-//			System.exit(-1);
-//		}
-//
-//		while (line != null) {
-//			tokens = line.split(",");
-//			try {
-//				//System.out.println(tokens[0]);
-//				result = getHTML(tokens[1].trim());
-//				//System.out.println(result[3]);
-//				if(result != null){
-//					
-//					String main_text = "";
-//					if(result[3] != null)
-//						main_text = te.parse(tokens[0], result[3]).trim();
-//					bw.write("\n<document id=\"" + tokens[0] + "\" url=\"" + tokens[1] + "\">\n");
-//					bw.write("<title>" + result[0] + "</title>\n");
-//					bw.write("<description>" + result[1] + "</description>\n");
-//					bw.write("<keywords>" + result[2] + "</keywords>\n");
-//					if(main_text != "")
-//						bw.write("<main>" + "\n" + main_text + "\n" + "</main>\n</document>\n");
-//					else
-//						bw.write("<main></main>\n</document>\n");
-//					bw.flush();
-//				}
-//				line = br.readLine();
-//			} catch (Exception e) {
-//				// TODO Auto-generated catch block
-//				line = br.readLine();
-//				System.out.println(tokens[0]);
-//				System.out.println(e.toString());
-//				//System.out.println(e.toString());
-//				continue;
-//			}
-//		}
-//		bw.write("</data>");
-//		br.close();
-//		bw.close();		
-//	}
-
-//	public String[] getHTML(String strURL) throws Exception {
-//		String[] result = new String[4];
-//		ArrayList url_info = readURL(strURL);
-//		
-//		if(url_info.get(0) == null) return null;
-//		//System.out.print(url_info.get(0));
-//		Document doc = Jsoup.parse((String)url_info.get(0), "", Parser.xmlParser().setTrackErrors(0));
-//		//doc.outputSettings().syntax(Document.OutputSettings.Syntax.xml);
-//		//doc.outputSettings().escapeMode(Entities.EscapeMode.xhtml);
-//		//doc.outputSettings().prettyPrint(false);
-//		
-//		//System.out.println(doc.outerHtml());
-//		//check charset again
-//		String detected_cs = doc.charset().name();
-//		String page_cs_str = doc.select("meta[http-equiv=\"Content-Type\"]").attr("content");
-//		if(!page_cs_str.equals("")){
-//			String[] outter = page_cs_str.split(";");
-//			if(outter.length > 1){
-//				String[] inner = outter[1].split("=");
-//				if(inner.length > 1){
-//					detected_cs = inner[1].trim();
-//				}
-//			}
-//		}
-//		else{
-//			String page_cs_str_01 = doc.select("meta").attr("charset");
-//			if(!page_cs_str_01.equals("")){
-//				detected_cs = page_cs_str_01.trim();
-//			}
-//		}
-//		//if not coincident with predict charset
-//		if(!detected_cs.equals(doc.charset().name())){
-//			url_info.set(0, new String((byte[])url_info.get(1), detected_cs));
-//			url_info.set(0, changeCharset((String)url_info.get(0), "UTF-8"));
-//			doc = Jsoup.parse((String)url_info.get(0), "", Parser.xmlParser().setTrackErrors(0));
-//		}
-//		
-//		doc.outputSettings().prettyPrint(false);
-//		
-//		result[0] = doc.title();
-//		result[1] = doc.select("meta[name=\"description\"]").attr("content");
-//		result[2] = doc.select("meta[name=\"keywords\"]").attr("content");
-//		
-//		//Filtering unnecessary html tags
-//		Element body = doc.select("body").first();
-//		
-//		//pass the html contents after filtering
-//		result[3] = tagFiltering(body);
-//		//System.out.println(result[3]);
-//		
-//		return result;
-//	}
 	
 	private String tagFiltering(Element html_body){
 		//System.out.println(body.outerHtml());
@@ -379,59 +337,6 @@ public class ContentExtractor {
 		}
 		
 		return html_body.outerHtml();
-	}
-	
-////	private ArrayList readURL(String strURL) throws Exception{
-//		ArrayList result = new ArrayList();
-//		String html=null,encoding;
-//		HttpGet httpGet = new HttpGet(strURL);
-//		httpGet.setConfig(requestConfig);
-//		CloseableHttpResponse response = httpClient.execute(httpGet);
-//		try{
-//			HttpEntity entity = response.getEntity();
-//			if(entity != null){
-//				InputStream in = entity.getContent();
-//				ByteArrayOutputStream bao = new ByteArrayOutputStream();
-//				byte[] buff = new byte[4096];
-//				int bytesRead;
-//
-//				while((bytesRead = in.read(buff)) > 0 ){
-//					if(!detector.isDone())
-//						detector.handleData(buff, 0, bytesRead);
-//					bao.write(buff, 0, bytesRead);
-//				}
-//				detector.dataEnd();
-//				byte[] data = bao.toByteArray();
-//				encoding = detector.getDetectedCharset();
-//				if(encoding != null){
-//					html = new String(data,encoding);
-//					if(encoding != "UTF-8")
-//						html = changeCharset(html, "UTF-8");
-//				}	
-//				else{
-//					html = new String(data, "UTF-8");
-//				}
-//				result.add(html);
-//				result.add(data);
-//				detector.reset();
-//			}
-//		}
-//		finally{
-//			response.close();
-//		}
-////		
-//		return result;
-//	}
-	private String changeCharset(String scr, String newCharset)  throws UnsupportedEncodingException {
-		if(scr != null)
-		{
-			if(newCharset != null){
-				return new String(scr.getBytes(newCharset), newCharset);
-			}
-			else
-				return scr;
-		}
-		return null;
 	}
 	
 }

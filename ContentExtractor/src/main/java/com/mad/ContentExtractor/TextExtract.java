@@ -40,10 +40,6 @@ public class TextExtract {
 		m_maxLines = max_lines;
 	}
 
-	/**
-	 * @param _html
-	 * @return
-	 */
 	public String parse(String _html) {
 		if(_html==null) return "";
 		m_html = _html;
