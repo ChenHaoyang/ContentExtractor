@@ -51,6 +51,12 @@
 	    <artifactId>lucene-analyzers-kuromoji-ipadic-neologd</artifactId>
 	    <version>6.0.0-20160519</version>
 	</dependency>
+	<!-- https://mvnrepository.com/artifact/org.languagetool/language-en -->
+	<dependency>
+	    <groupId>org.languagetool</groupId>
+	    <artifactId>language-en</artifactId>
+    	<version>3.4</version>
+	</dependency>
   </dependencies>
   <build>
   <!-- 

@@ -4,6 +4,7 @@ import java.io.*;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.regex.*;
 
@@ -17,27 +18,35 @@ public class TextExtract {
 	private static int m_minTokens = 5;
 	private long m_threshold;
 	private String m_html;
-	private int m_maxLines;
+	private int m_maxBlocks, m_maxLinesInBlock;
 	private double m_mainRatio;
 	private StringBuilder m_text;
 	private ArrayList<Integer> m_indexDistribution;
+	
+	private static String m_noiseWords = "記事一覧|利用規約|Copyright|お知らせ|お問い合わせ|利用条件|注意事項|対応可能エリア|配送について|返品について|お支払方法|クレジット決済|あす楽";
 	
 	public TextExtract() {
 		m_lines = new ArrayList<String>();
 		m_indexDistribution = new ArrayList<Integer>();
 		m_text = new StringBuilder();
 		m_mainRatio = 0.8;
-		m_maxLines = 100;
+		m_maxBlocks = 5;
+		m_maxLinesInBlock = 50;
 	}
 	
-	public TextExtract(int blocks_width, int min_tokens, double main_ratio, int max_lines){
+	public TextExtract(int blocks_width, int min_tokens, double main_ratio, int max_blocks, int max_lines_in_block) throws Exception{
+		if(blocks_width<=0 || min_tokens <=0 || main_ratio >1 || main_ratio <= 0 || max_blocks < 0){
+			throw new Exception("illegal Parameter");
+		}
+			
 		m_lines = new ArrayList<String>();
 		m_indexDistribution = new ArrayList<Integer>();
 		m_text = new StringBuilder();
 		m_blocksWidth = blocks_width;
 		m_minTokens = min_tokens;
 		m_mainRatio = main_ratio;
-		m_maxLines = max_lines;
+		m_maxBlocks = max_blocks;
+		m_maxLinesInBlock = max_lines_in_block;
 	}
 
 	public String parse(String _html) {
@@ -91,7 +100,7 @@ public class TextExtract {
 		source = sub_rule_02.matcher(source).replaceAll("\n");
 		//System.out.println(source);
 		source = sub_rule_05.matcher(source).replaceAll("\n");
-		for(int i=1; i<m_blocksWidth;i++)
+		for(int i=0; i<=m_blocksWidth;i++)
 			n_str += "\n";
 		source = sub_rule_06.matcher(source).replaceAll(n_str);
 		//System.out.println(source);
@@ -118,19 +127,12 @@ public class TextExtract {
 		case 1:
 			return Math.max(m_minTokens, data.get(0));
 		case 2:
-			return Math.max(m_minTokens, data.get(1));
-		case 3:
-			
+			return Math.max(m_minTokens, data.get(1));	
 		}
 		
 		for(int i=1; i<list_size-1; i++){
 			long f2=0;
 			
-//			if(i==0)
-//				f2 = (data.get(i+2)-2*data.get(i+1)+data.get(i));
-//			else if(i==list_size-1)
-//				f2 = (data.get(i)-2*data.get(i-1)+data.get(i-2));
-//			else
 			f2 = (data.get(i-1)-2*data.get(i)+data.get(i+1));
 			//if the point of list_size-2 got the max value, then we take the last point.(for safety reason)
 			if(f2 > max_f2){
@@ -235,13 +237,14 @@ public class TextExtract {
 	
 	private String getText() {
 		int start, end;
+		int block_num = 0;
+		int line_count=0;
 		ArrayList<Long> list_for_sort = new ArrayList<Long>();//for sort
-		ArrayList<ArrayList> block_list = new ArrayList();
+		HashMap<Integer,List> block_idx_map = new HashMap();
+		HashMap<Long,List> block_rnk_map = new HashMap();
 		m_lines = Arrays.asList(m_html.split("\n",-1));
 
 		m_text.setLength(0);
-		
-		int line_count=0;
 		//int max_line_tokens=0;
 		int parse_max_line = (int)Math.ceil(m_lines.size()*m_mainRatio);
 		//int parse_stop_line=0;
@@ -258,12 +261,12 @@ public class TextExtract {
 				for (int j = i; j < i + m_blocksWidth; j++) { 
 					//lines.set(j, lines.get(j).trim());
 					tokens[j] = m_lines.get(j).replaceAll("[\\s ]", "");
-					tokens[j] = tokens[j].replaceAll("[^\\w\uFF10-\uFF19\uFF21-\uFF3A\uFF41-\uFF5A\u4E00-\u9FFF\u3040-\u309F\u30A0-\u30FF]", "");
+					tokens[j] = tokens[j].replaceAll("[^\\w\uFF10-\uFF19\uFF21-\uFF3A\uFF41-\uFF5A\uFF66-\uFF9D\u4E00-\u9FFF\u3040-\u309F\u30A0-\u30FF]", "");
 					wordsNum += tokens[j].length();
 					//cal_flag = false;
 				}
 				
-				wordsNum = (int)Math.round((double)wordsNum / (double)m_blocksWidth);
+				wordsNum = Math.round((float)wordsNum / (float)m_blocksWidth);
 				m_indexDistribution.add(wordsNum);
 				//list_for_sort.add(wordsNum);
 				
@@ -279,14 +282,6 @@ public class TextExtract {
 		catch(Exception e){
 			e.printStackTrace();
 		}
-		//System.out.println("lines: " + lines.size());
-		//Collections.sort(list_for_sort);
-		//int avr_top_n = calThreshold(tmp, 3);
-
-		//threshold = avr_top_n / blocksWidth;
-		//threshold = calThreshold(list_for_sort, 3);
-		//threshold = (int)Math.ceil(delay_ratio * (double)max_line_tokens);
-		//System.out.println(threshold);
 		
 		start = -1; end = -1;
 		boolean boolstart = false, boolend = false, first_read = false;
@@ -294,6 +289,7 @@ public class TextExtract {
 		int line_number = m_indexDistribution.size();
 		long block_max_tokens = 0;
 		long block_token_sum = 0;
+		boolean noise_block = false;
 		
 		try{
 			for(int i = 0; i < line_number ; i++) {
@@ -301,24 +297,38 @@ public class TextExtract {
 					boolstart = true;
 					start = i;
 					block_token_sum += tokens[i].length();
+					noise_block = tokens[i].matches(".*("+ m_noiseWords +")+.*");
 					if(m_indexDistribution.get(i) > block_max_tokens)
 						block_max_tokens = m_indexDistribution.get(i);
 					//System.out.println("start: " + start);
 					continue;
 				}
 				if (boolstart) {
-					block_token_sum += tokens[i].length();
-					if(m_indexDistribution.get(i) > block_max_tokens)
-						block_max_tokens = m_indexDistribution.get(i);
+					if(!noise_block){
+						block_token_sum += tokens[i].length();
+						noise_block = tokens[i].matches(".*("+ m_noiseWords +")+.*");
+						if(m_indexDistribution.get(i) > block_max_tokens)
+							block_max_tokens = m_indexDistribution.get(i);
+					}
 					if (m_indexDistribution.get(i) == 0) {
 						end = i;
-						ArrayList tmp_list = new ArrayList();
-						tmp_list.add(start);
-						tmp_list.add(end);
-						tmp_list.add(block_max_tokens);
-						tmp_list.add(block_token_sum);
-						block_list.add(tmp_list);
-						list_for_sort.add(block_max_tokens);
+						if(!noise_block){
+							ArrayList block_obj = new ArrayList();
+							block_obj.add(start);
+							block_obj.add(end);
+							block_obj.add(block_max_tokens);
+							block_obj.add(block_token_sum);
+							block_idx_map.put(block_num, block_obj);
+							if(block_rnk_map.containsKey(block_max_tokens))
+								block_rnk_map.get(block_max_tokens).add(block_obj);
+							else{
+								ArrayList<List> tmp = new ArrayList();
+								tmp.add(block_obj);
+								block_rnk_map.put(block_max_tokens, tmp);
+							}
+							list_for_sort.add(block_max_tokens);
+							block_num++;
+						}
 						//list_for_sort.add(block_token_sum);
 						//total_sum += block_max_tokens;
 						//System.out.print(block_max_tokens + "\n");
@@ -328,49 +338,49 @@ public class TextExtract {
 						boolstart = false;
 					}
 				}
-			
-	//			if (boolend) {
-	//				if(first_read && (start>parse_stop_line))
-	//					break;
-	//				buffer.setLength(0);
-	//				//System.out.println(start+1 + "\t\t" + end+1);
-	//				for (int ii = start; ii < end; ii++) {
-	//					String txt = tokens[ii];
-	//					if (txt.length() == 0) continue;
-	//					if(line_count > max_lines)
-	//						break;
-	//					else
-	//						line_count++;
-	//					if(!txt.matches(".*(記事一覧|利用規約)+.*"))
-	//						buffer.append(lines.get(ii).trim() + "\n");
-	//				}
-	//				String str = buffer.toString();
-	//				//System.out.println(str);
-	//				if (str.contains("Copyright")) continue; 
-	//				text.append(str);
-	//				boolstart = boolend = false;
-	//				first_read = true;
-	//			}
 			}
 			
 			if(start > end){
-				ArrayList tmp_list = new ArrayList();
-				tmp_list.add(start);
-				tmp_list.add(line_number);
-				tmp_list.add(block_max_tokens);
-				tmp_list.add(block_token_sum);
-				block_list.add(tmp_list);
-				list_for_sort.add(block_max_tokens);
+				if(!noise_block){
+					ArrayList block_obj = new ArrayList();
+					block_obj.add(start);
+					block_obj.add(line_number);
+					block_obj.add(block_max_tokens);
+					block_obj.add(block_token_sum);
+					block_idx_map.put(block_num, block_obj);
+					if(block_rnk_map.containsKey(block_max_tokens))
+						block_rnk_map.get(block_max_tokens).add(block_obj);
+					else{
+						ArrayList<List> tmp = new ArrayList();
+						tmp.add(block_obj);
+						block_rnk_map.put(block_max_tokens, tmp);
+					}
+					list_for_sort.add(block_max_tokens);
+					block_num++;
+				}
 				//list_for_sort.add(block_token_sum);
 				//total_sum += block_max_tokens;
 			}
 			m_threshold = calThreshold(list_for_sort);
+			
+			for(int i=0; i<block_num;){
+				for(Object ob:block_rnk_map.get(list_for_sort.get(i))){
+					List tmp = (List)ob;
+					tmp.add(++i);
+				}
+			}
+			int min_block_idx = 0;
+			if(m_maxBlocks > 0)
+				min_block_idx = block_num - m_maxBlocks;
 			//start to choose blocks
-			for(ArrayList block:block_list){
+			for(int i=0; i<block_num;i++){
+				List block = block_idx_map.get(i);
 				long b_max_tokens = (Long)block.get(2);
 				long b_token_sum = (Long)block.get(3);
 				
 				if(b_max_tokens >= m_threshold){
+					if((Integer)block.get(4) <= min_block_idx)
+						continue;
 					int b_start = (Integer)block.get(0);
 					int b_end = (Integer)block.get(1);
 					
@@ -378,19 +388,21 @@ public class TextExtract {
 						continue;
 					
 					buffer.setLength(0);
+					line_count=0;
 					//System.out.println(start+1 + "\t\t" + end+1);
 					for (int ii = b_start; ii < b_end; ii++) {
 						String txt = tokens[ii];
 						if (txt.length() == 0) continue;
-						if(line_count > m_maxLines)
-							break;
-						if(!txt.matches(".*(記事一覧|利用規約|Copyright)+.*")){
-							buffer.append(m_lines.get(ii).trim() + "\n");
-							line_count++;
-						}
+						if(line_count > m_maxLinesInBlock) break;
+					
+						buffer.append(m_lines.get(ii).trim() + "\n");
+						line_count++;	
 					}
-					String str = buffer.toString();
-					m_text.append(str);				
+					if(buffer.length() > 0){
+						String str = buffer.toString();
+						block.add(str);
+						m_text.append(str);	
+					}
 				}
 			}
 		}
