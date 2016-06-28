@@ -24,7 +24,7 @@ public class TextExtract {
 	private ArrayList<Integer> m_indexDistribution;
 	
 	private static String m_noiseWords = "記事一覧|利用規約|Copyright|お知らせ|お問い合わせ|利用条件|注意事項|対応可能エリア|配送について|返品について|お支払方法|クレジット決済|あす楽";
-	
+	public static String m_targetTokens = "\\w\uFF10-\uFF19\uFF21-\uFF3A\uFF41-\uFF5A\uFF66-\uFF9F\u4E00-\u9FFF\u3040-\u309F\u30A0-\u30FF";
 	public TextExtract() {
 		m_lines = new ArrayList<String>();
 		m_indexDistribution = new ArrayList<Integer>();
@@ -261,7 +261,8 @@ public class TextExtract {
 				for (int j = i; j < i + m_blocksWidth; j++) { 
 					//lines.set(j, lines.get(j).trim());
 					tokens[j] = m_lines.get(j).replaceAll("[\\s ]", "");
-					tokens[j] = tokens[j].replaceAll("[^\\w\uFF10-\uFF19\uFF21-\uFF3A\uFF41-\uFF5A\uFF66-\uFF9D\u4E00-\u9FFF\u3040-\u309F\u30A0-\u30FF]", "");
+					//tokens[j] = "12  34１２３４abcsABCDａｂＡＢ◆私わたしワタシ//:,";
+					tokens[j] = tokens[j].replaceAll("[^"+m_targetTokens+"]", "");
 					wordsNum += tokens[j].length();
 					//cal_flag = false;
 				}

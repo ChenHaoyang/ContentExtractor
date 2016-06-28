@@ -57,13 +57,12 @@ public class ContentExtractor {
 	private JLanguageTool m_langTool;
 	
 	public ContentExtractor() throws Exception{
-		this(true, true, false, 0, 4, 5, 0.8, 5, 50);
+		this(true, true, 0, 4, 5, 0.8, 5, 50);
 	}
 	
 	/**
 	 * @param isUsrDict whether using the user dictionary or not
 	 * @param discardPunctuation discard the punctuation during parsing 
-	 * @param lowerCase whether changing the alphabet to lower-case or not
 	 * @param mode specify the mode of tokenizer. (0:normal, 1:search, 2:extended)
 	 * @param blocks_width set the block width of the content extractor. (default: 4)
 	 * @param min_tokens set the minimal number of tokens that can be retrieved as contents. (default: 5)
@@ -73,9 +72,9 @@ public class ContentExtractor {
 	 * @version 1.0.0
 	 * @throws Exception 
 	 */
-	public ContentExtractor(boolean isUsrDict, boolean discardPunctuation, boolean lowerCase, int mode, int blocks_width, int min_tokens, double main_ratio, int max_blocks, int max_lines_in_block) throws Exception{
+	public ContentExtractor(boolean isUsrDict, boolean discardPunctuation, int mode, int blocks_width, int min_tokens, double main_ratio, int max_blocks, int max_lines_in_block) throws Exception{
 		UserDictionary usrDict = null;
-		m_lowerCase = lowerCase;
+		m_lowerCase = false;
 		BufferedReader br = new BufferedReader(new InputStreamReader(this.getClass().getResourceAsStream("/stopwords_en.txt")));
 		String sw = br.readLine();
 		
@@ -133,14 +132,13 @@ public class ContentExtractor {
 	/**
 	 * @param isUsrDict whether using the user dictionary or not
 	 * @param discardPunctuation discard the punctuation during parsing 
-	 * @param lowerCase whether changing the alphabet to lower-case or not
 	 * @param mode specify the mode of tokenizer. (0:normal, 1:search, 2:extended)
 	 * @author charles
 	 * @version 1.0.0
 	 * @throws Exception 
 	 */
-	public ContentExtractor(boolean isUsrDict, boolean discardPunctuation, boolean lowerCase, int mode) throws Exception{
-		this(isUsrDict, discardPunctuation, lowerCase, mode, 4, 5, 0.8, 5, 50);
+	public ContentExtractor(boolean isUsrDict, boolean discardPunctuation, int mode) throws Exception{
+		this(isUsrDict, discardPunctuation, mode, 4, 5, 0.8, 5, 50);
 	}
 	
 	/**
@@ -206,14 +204,15 @@ public class ContentExtractor {
 		HashMap<String, Integer> word_count = new HashMap<String, Integer>();
 		
 		Document doc = Jsoup.parse(html, "", Parser.xmlParser().setTrackErrors(0));
-		String meta_title = doc.title().replaceAll("[^\\w\uFF10-\uFF19\uFF21-\uFF3A\uFF41-\uFF5A\uFF66-\uFF9D\u4E00-\u9FFF\u3040-\u309F\u30A0-\u30FF]", "");
-		String meta_description = doc.select("meta[name=\"description\"]").attr("content").replaceAll("[^\\w\uFF10-\uFF19\uFF21-\uFF3A\uFF41-\uFF5A\uFF66-\uFF9D\u4E00-\u9FFF\u3040-\u309F\u30A0-\u30FF]", "");
-		String meta_keywords = doc.select("meta[name=\"keywords\"]").attr("content").replaceAll("[^\\w\uFF10-\uFF19\uFF21-\uFF3A\uFF41-\uFF5A\uFF66-\uFF9D\u4E00-\u9FFF\u3040-\u309F\u30A0-\u30FF]", "");
+		String meta_title = doc.title();
+		String meta_description = doc.select("meta[name=\"description\"]").attr("content");
+		String meta_keywords = doc.select("meta[name=\"keywords\"]").attr("content");
 		String body = tagFiltering(doc.select("body").first());
 		String main_text = m_textExtract.parse(body);
-		m_tokenizer.setReader(new StringReader(meta_title + " " + meta_description + " " + meta_keywords + " " + main_text));
+		StringReader sr = new StringReader((meta_title + " " + meta_description + " " + meta_keywords + " " + main_text).replaceAll("[^"+TextExtract.m_targetTokens+" ]", ""));
+		m_tokenizer.setReader(sr);
 		//m_tokenizer.setReader(new StringReader(meta_title + meta_description + meta_keywords + main_text));
-		//m_tokenizer.setReader(new StringReader("亭さん"));
+		//m_tokenizer.setReader(new StringReader("無料ﾎﾑﾍﾟ素材も超充実"));
 		tokenStream = new StopFilter(m_tokenizer, m_stopSet);
 		tokenStream = new JapanesePartOfSpeechStopFilter(tokenStream, m_stopTags);
 		if(m_lowerCase)
@@ -250,9 +249,7 @@ public class ContentExtractor {
 								else
 									kw = s1.toLowerCase() + s2;
 							}
-								
 						}
-						//kw = kw.toLowerCase();
 					}
 					if(word_count.containsKey(kw))
 						word_count.put(kw, (Integer)word_count.get(kw)+1);
@@ -352,6 +349,8 @@ public class ContentExtractor {
 		//System.out.println(body.outerHtml());
 		html_body.select("form, iframe, textarea, input").remove();
 		html_body.select("span[data-tipso]").remove();
+		
+		html_body.select("a:matchesOwn((?i)(http|https|.com|.cn|.net|.jp)+)").remove();
 		//body.select("table[class]")
 		//System.out.println(body.outerHtml());
 		//Document dd = Jsoup.parse("<body><t1>11<t11></t11></t1><t2><t2></t2></t2></body>");
