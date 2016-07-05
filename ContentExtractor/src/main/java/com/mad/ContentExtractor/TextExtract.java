@@ -11,8 +11,13 @@ import java.util.regex.*;
 import org.apache.commons.lang.StringEscapeUtils;;
 
 
-public class TextExtract {
+public class TextExtract implements Serializable {
 	
+	/**
+	 * 
+	 */
+	//08:14:20.32 ID:
+	private static final long serialVersionUID = 1L;
 	private List<String> m_lines;
 	private static int m_blocksWidth=4;
 	private static int m_minTokens = 5;
@@ -35,9 +40,10 @@ public class TextExtract {
 	}
 	
 	public TextExtract(int blocks_width, int min_tokens, double main_ratio, int max_blocks, int max_lines_in_block) throws Exception{
-		if(blocks_width<=0 || min_tokens <=0 || main_ratio >1 || main_ratio <= 0 || max_blocks < 0){
-			throw new Exception("illegal Parameter");
-		}
+		if(blocks_width<=0) throw new Exception("illegal Parameter: block_width must be an integer larger than 0");
+		if(min_tokens <=0) throw new Exception("illegal Parameter: min_token must be an integer larger than 0");
+		if(main_ratio >1 || main_ratio <= 0) throw new Exception("illegal Parameter: main_ratio must between 0 and 1");
+		if(max_blocks < 0) throw new Exception("illegal Parameter: max_blocks must be an integer no less than 0");
 			
 		m_lines = new ArrayList<String>();
 		m_indexDistribution = new ArrayList<Integer>();
@@ -49,7 +55,11 @@ public class TextExtract {
 		m_maxLinesInBlock = max_lines_in_block;
 	}
 
-	public String parse(String _html) {
+	public String parse(String html){
+		return _parse(html);
+	}
+	
+	private String _parse(String _html) {
 		if(_html==null) return "";
 		m_html = _html;
 		m_html = preProcess(m_html.replaceAll("[\b\t\r\n\f]", ""));
@@ -87,16 +97,9 @@ public class TextExtract {
 		//System.out.println(source);
 		//source = "<div id=\"header_ad\"><script></script><div></div></div><div></div>";
 		source = main_rule.matcher(source).replaceAll("");
-		//System.out.println(source);
-		//source = source.replaceAll("<a [^>]*?>[^<]{11,}?</a>", "");
-		//System.out.println(source);
 		while(sub_rule_01.matcher(source).find())
 			//source = source.replaceAll("(<br>[\\s]*?){2}", "<br>");
 			source = sub_rule_01.matcher(source).replaceAll("<br>");
-		//System.out.println(source);
-		//System.out.println(source);
-		//source = source.replaceAll("(<br>|\r\n)", "\n");
-		//source = source.replaceAll("(?is)<.*?>", "");
 		source = sub_rule_02.matcher(source).replaceAll("\n");
 		//System.out.println(source);
 		source = sub_rule_05.matcher(source).replaceAll("\n");
@@ -371,6 +374,7 @@ public class TextExtract {
 				}
 			}
 			int min_block_idx = 0;
+			//最大ブロック数を有効にする
 			if(m_maxBlocks > 0)
 				min_block_idx = block_num - m_maxBlocks;
 			//start to choose blocks
@@ -395,9 +399,12 @@ public class TextExtract {
 						String txt = tokens[ii];
 						if (txt.length() == 0) continue;
 						if(line_count > m_maxLinesInBlock) break;
-					
-						buffer.append(m_lines.get(ii).trim() + "\n");
-						line_count++;	
+						
+						//ユーザー名などの文字行をスキップする
+						if(!m_lines.get(ii).matches("(.*[\\d]{2}[:\\.]{1}[\\d]{2}([:\\.]{1}[\\d]{2})?.*|.*ID:.*)")){
+							buffer.append(m_lines.get(ii).trim() + "\n");
+							line_count++;
+						}
 					}
 					if(buffer.length() > 0){
 						String str = buffer.toString();
@@ -410,31 +417,6 @@ public class TextExtract {
 		catch(Exception e){
 			System.out.println(e.toString());
 		}
-		//for the final iteration
-//		if (start > end && !(first_read && (start>parse_stop_line)))
-//		{
-//			buffer.setLength(0);
-//			int size_1 = lines.size()-1;
-//			for (int ii = start; ii <= size_1; ii++) {
-//				String txt = tokens[ii];
-//				if (txt.length() == 0) continue;
-//				if(line_count > max_lines)
-//					break;
-//				else
-//					line_count++;
-//				if(!txt.matches(".*(記事一覧|利用規約)+.*"))
-//					buffer.append(lines.get(ii).trim() + "\n");
-//			}
-//			String str = buffer.toString();
-//			//System.out.println(str);
-//			if ((!str.contains("Copyright"))) 
-//			{	
-//				text.append(str);
-//			}
-//		}
-		
-		//if(text.length() == 0)
-		//	return lines.get(parse_stop_line);
 		return m_text.toString();
 	}
 /*	

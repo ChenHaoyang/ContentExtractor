@@ -1,13 +1,21 @@
 package com.mad.ContentExtractor;
 
 import java.io.*;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 
 import org.apache.commons.lang.StringEscapeUtils;
+import org.apache.hadoop.hbase.client.Get;
+import org.apache.hadoop.hbase.client.HConnection;
+//import org.apache.hadoop.hbase.client.HTable;
+import org.apache.hadoop.hbase.client.HTableInterface;
+import org.apache.hadoop.hbase.client.Result;
+import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.Tokenizer;
 import org.apache.lucene.analysis.core.LowerCaseFilter;
 import org.apache.lucene.analysis.core.StopFilter;
-import org.apache.lucene.analysis.en.EnglishAnalyzer;
+//import org.apache.lucene.analysis.en.EnglishAnalyzer;
 import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 import org.apache.lucene.analysis.util.CharArraySet;
 import org.codelibs.neologd.ipadic.lucene.analysis.ja.JapaneseAnalyzer;
@@ -22,15 +30,12 @@ import org.jsoup.parser.Parser;
 import org.jsoup.select.Elements;
 import org.languagetool.JLanguageTool;
 import org.languagetool.language.BritishEnglish;
-import org.languagetool.language.English;
 import org.languagetool.rules.Rule;
-import org.languagetool.rules.RuleMatch;
 
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map.Entry;
 import java.util.Set;
@@ -39,14 +44,16 @@ import java.util.Set;
 //import org.mozilla.intl.chardet.nsICharsetDetectionObserver;
 //import org.mozilla.intl.chardet.nsPSMDetector;
 
-/**
- * @author charles
- *
- */
-public class ContentExtractor {
 
+
+public class ContentExtractor implements Serializable{
+
+	/**
+	 * 
+	 */
+	private static final long serialVersionUID = 1L;
 	private Tokenizer m_tokenizer;
-	private JapaneseAnalyzer m_analyzer;
+	//private JapaneseAnalyzer m_analyzer;
 	private CharTermAttribute m_term;
 	private BaseFormAttribute m_baseForm;
 	private PartOfSpeechAttribute m_partOfSpeech;
@@ -55,31 +62,39 @@ public class ContentExtractor {
 	private CharArraySet m_stopSet;
 	private Set<String> m_stopTags;
 	private JLanguageTool m_langTool;
+	private HTableInterface m_hTable;
+	private static String m_tableName = "dict_en";
 	
+	/**
+	 * @author charles
+	 *
+	 */
 	public ContentExtractor() throws Exception{
-		this(true, true, 0, 4, 5, 0.8, 5, 50);
+		this(true, false, 0, null, 4, 5, 0.8, 5, 50);
 	}
 	
 	/**
 	 * @param isUsrDict whether using the user dictionary or not
 	 * @param discardPunctuation discard the punctuation during parsing 
 	 * @param mode specify the mode of tokenizer. (0:normal, 1:search, 2:extended)
+	 * @param conn connection object for HBase
 	 * @param blocks_width set the block width of the content extractor. (default: 4)
-	 * @param min_tokens set the minimal number of tokens that can be retrieved as contents. (default: 5)
+	 * @param min_tokens set the minimal number of tokens that can be recognized as contents. (default: 5)
 	 * @param main_ratio set the main content ratio. (default: 0.8)
-	 * @param max_blocks set the maximal lines can be retrieved. (default: 100)
+	 * @param max_blocks set the maximal number of blocks can be retrieved. (default: 5)
+	 * @param max_lines_in_block set the maximal lines of block can be retrieved. (default: 50)
 	 * @author charles
-	 * @version 1.0.0
-	 * @throws Exception 
+	 * @version 1.0.1
+	 * @throws Exception
 	 */
-	public ContentExtractor(boolean isUsrDict, boolean discardPunctuation, int mode, int blocks_width, int min_tokens, double main_ratio, int max_blocks, int max_lines_in_block) throws Exception{
+	public ContentExtractor(boolean isUsrDict, boolean discardPunctuation, int mode, HConnection conn, int blocks_width, int min_tokens, double main_ratio, int max_blocks, int max_lines_in_block) throws Exception{
 		UserDictionary usrDict = null;
-		m_lowerCase = false;
-		BufferedReader br = new BufferedReader(new InputStreamReader(this.getClass().getResourceAsStream("/stopwords_en.txt")));
-		String sw = br.readLine();
+		m_lowerCase = true;
 		
 		if(isUsrDict){
+			//userDict = new UserDictionary(Files.readAllLines(Paths.get(this.getClass().getResource("/user_dict.txt").getPath())));
 			usrDict = UserDictionary.open(new BufferedReader(new InputStreamReader(this.getClass().getResourceAsStream("/user_dict.txt"))));
+			//usrDict.
 		}
 		
 		switch(mode){
@@ -102,17 +117,13 @@ public class ContentExtractor {
 		m_term = m_tokenizer.addAttribute(CharTermAttribute.class);
 		m_baseForm = m_tokenizer.addAttribute(BaseFormAttribute.class);
 		m_partOfSpeech = m_tokenizer.addAttribute(PartOfSpeechAttribute.class);
-		m_langTool = new JLanguageTool(new BritishEnglish());
-		for (Rule rule : m_langTool.getAllRules()) {
-			  if (!rule.isDictionaryBasedSpellingRule()) {
-				  m_langTool.disableRule(rule.getId());
-			  }
-		}
 		m_textExtract = new TextExtract(blocks_width, min_tokens, main_ratio, max_blocks, max_lines_in_block);
 		m_stopSet = JapaneseAnalyzer.getDefaultStopSet();
 		m_stopTags = JapaneseAnalyzer.getDefaultStopTags();
 		
 		//Add stop words of English language
+		BufferedReader br = new BufferedReader(new InputStreamReader(this.getClass().getResourceAsStream("/stopwords_en.txt")));
+		String sw = br.readLine();
 		while(sw != null){
 			m_stopSet.add(sw);
 			sw = br.readLine();
@@ -127,6 +138,32 @@ public class ContentExtractor {
 		}
 		br.close();
 		
+//		long time;
+//		time = System.currentTimeMillis();
+//		List<String> wikiTokens = Files.readAllLines(Paths.get("/home/charles/Data/dict/enwiki-20160601-dict.txt"));
+//		System.out.println((System.currentTimeMillis()-time)/1000 + "s");
+		m_langTool = new JLanguageTool(new BritishEnglish());
+		for (Rule rule : m_langTool.getAllRules()) {
+			  if (!rule.isDictionaryBasedSpellingRule()) {
+				  //System.out.println(rule.getDescription());
+				  m_langTool.disableRule(rule.getId());
+			  }
+		}
+		
+		if(conn != null){
+			m_hTable = conn.getTable(m_tableName);
+			m_hTable.setWriteBufferSize(134217728);
+			m_hTable.setAutoFlush(false, true);
+		}
+	}
+	
+	protected void finalize(){
+		try {
+			m_hTable.close();
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
 	}
 	
 	/**
@@ -134,24 +171,24 @@ public class ContentExtractor {
 	 * @param discardPunctuation discard the punctuation during parsing 
 	 * @param mode specify the mode of tokenizer. (0:normal, 1:search, 2:extended)
 	 * @author charles
-	 * @version 1.0.0
+	 * @version 1.0.1
 	 * @throws Exception 
 	 */
-	public ContentExtractor(boolean isUsrDict, boolean discardPunctuation, int mode) throws Exception{
-		this(isUsrDict, discardPunctuation, mode, 4, 5, 0.8, 5, 50);
+	public ContentExtractor(boolean isUsrDict, boolean discardPunctuation, int mode, HConnection conn) throws Exception{
+		this(isUsrDict, discardPunctuation, mode, conn, 4, 5, 0.8, 5, 50);
 	}
 	
 	/**
 	 * @param lowerCase specify the lower-case mode
 	 */
-	public void setLowerCase(boolean lowerCase){
+	private void setLowerCase(boolean lowerCase){
 		m_lowerCase = lowerCase;
 	}
 	
 	/**
 	 * @return the current lower-case mode
 	 */
-	public boolean getlowerCase(){
+	private boolean getlowerCase(){
 		return m_lowerCase;
 	}
 	
@@ -188,7 +225,7 @@ public class ContentExtractor {
 	 * @param html The input HTML string
 	 * @return a HashMap with 5 elements. key values:("meta_title", "meta_description", "meta_keywords", "main_text", "keywords")
 	 * @author charles
-	 * @version 1.0.0
+	 * @version 1.0.1
 	 * @throws Exception throw exception if error happens 
 	 */
 	public HashMap<String, String> analyse(String html) throws Exception{
@@ -197,29 +234,31 @@ public class ContentExtractor {
 	
 	private HashMap<String, String> extract(String html) throws Exception{
 		if(html==null || "".equals(html)) return null;
-		
+
 		String keyword_list = "";
 		TokenStream tokenStream;
 		HashMap<String, String> result = new HashMap<String, String>();
 		HashMap<String, Integer> word_count = new HashMap<String, Integer>();
 		
 		Document doc = Jsoup.parse(html, "", Parser.xmlParser().setTrackErrors(0));
-		String meta_title = doc.title();
-		String meta_description = doc.select("meta[name=\"description\"]").attr("content");
-		String meta_keywords = doc.select("meta[name=\"keywords\"]").attr("content");
+		String meta_title = zenkakuToHankaku(doc.title());
+		String meta_description = zenkakuToHankaku(doc.select("meta[name=\"description\"]").attr("content"));
+		String meta_keywords = zenkakuToHankaku(doc.select("meta[name=\"keywords\"]").attr("content"));
 		String body = tagFiltering(doc.select("body").first());
-		String main_text = m_textExtract.parse(body);
-		StringReader sr = new StringReader((meta_title + " " + meta_description + " " + meta_keywords + " " + main_text).replaceAll("[^"+TextExtract.m_targetTokens+" ]", ""));
+		String main_text = zenkakuToHankaku(m_textExtract.parse(body));
+		StringReader sr = new StringReader((meta_title + " " + meta_description + " " + meta_keywords + " " + main_text).replaceAll("[^"+TextExtract.m_targetTokens+" .\\-\'\\n]", ""));
 		m_tokenizer.setReader(sr);
 		//m_tokenizer.setReader(new StringReader(meta_title + meta_description + meta_keywords + main_text));
-		//m_tokenizer.setReader(new StringReader("無料ﾎﾑﾍﾟ素材も超充実"));
+		//m_tokenizer.setReader(new StringReader("伊倉愛美"));
 		tokenStream = new StopFilter(m_tokenizer, m_stopSet);
 		tokenStream = new JapanesePartOfSpeechStopFilter(tokenStream, m_stopTags);
 		if(m_lowerCase)
 			tokenStream = new LowerCaseFilter(tokenStream);
 		tokenStream.reset();
 		//List<RuleMatch> matches = m_langTool.check("xmouxzt");
-		
+		List<Get> gets = null;
+		if(m_hTable != null)
+			gets = new ArrayList<Get>();
 		while(tokenStream.incrementToken()){
 			String speech = m_partOfSpeech.getPartOfSpeech();
 			String base = m_baseForm.getBaseForm();
@@ -234,30 +273,32 @@ public class ContentExtractor {
 					else kw = m_term.toString();		
 				}
 				else kw = null;
-
 				if(kw != null){
-					if(kw.matches("[a-zA-Z]+")){
-						if(!kw.matches("[A-Z]+")){
-							String s1 = kw.substring(0,1);
-							String s2 = kw.substring(1).toLowerCase();
-
-							if(m_langTool.check(s1 + s2).size() > 0)
-								continue;
-							else{
-								if(m_langTool.check(s1.toLowerCase() + s2).size() > 0)
-									kw = s1 + s2;
-								else
-									kw = s1.toLowerCase() + s2;
+					//英文であるか
+					if(kw.matches("[\\x20-\\x7E]+")){
+						//kw = kw.toLowerCase();
+						int erro_num = m_langTool.check(kw).size();
+						if(erro_num > 0){
+							if(gets != null){
+								Get g = new Get(Bytes.toBytes(kw));
+								gets.add(g);
 							}
+							continue;
 						}
 					}
-					if(word_count.containsKey(kw))
-						word_count.put(kw, (Integer)word_count.get(kw)+1);
-					else
-						word_count.put(kw, 1);
+					addTokenToHashMap(word_count, kw);
 				}
 			}
 		}
+		//HBaseの辞書を利用する
+		if(gets != null && gets.size() > 0){
+			Result[] res = m_hTable.get(gets);
+			for(int i=0; i<res.length; i++){
+				if(!res[i].isEmpty()) 
+					addTokenToHashMap(word_count, new String(gets.get(i).getRow()));
+			}
+		}
+		
 		List<Entry<String, Integer>> sorted_map = new ArrayList<Entry<String, Integer>>(word_count.entrySet());
 		
 		Collections.sort(sorted_map, new Comparator<Entry<String, Integer>>(){
@@ -281,8 +322,21 @@ public class ContentExtractor {
 		
 		tokenStream.end();
 		tokenStream.close();
-			
+
 		return result;
+	}
+	
+//	private class tokenComparator implements Comparator<Entry<String, Integer>>{
+//		public int compare(Entry<String, Integer> o1, Entry<String, Integer> o2){
+//			return o2.getValue() - o1.getValue();
+//		}
+//	}
+	
+	private void addTokenToHashMap(HashMap<String, Integer> hm, String token){
+		if(hm.containsKey(token))
+			hm.put(token, (Integer)hm.get(token)+1);
+		else
+			hm.put(token, 1);
 	}
 	
 	private String tagFiltering(Element html_body){
@@ -293,7 +347,7 @@ public class ContentExtractor {
 		//System.out.println(body.outerHtml());
 		//body.select("meta").remove();
 		//remove link block
-		Elements link_blocks = html_body.select("div:has(a), span:has(a), ul:has(a), td:has(a)");
+		Elements link_blocks = html_body.select("div:has(a), span:has(a), ul:has(a), td:has(a), ol:has(a), dir:has(a)");
 		for(Element node:link_blocks){
 			int child_of_a=0;
 			int a_txt_num = 0;
@@ -310,11 +364,11 @@ public class ContentExtractor {
 			
 			int direct_a_num = node.select(">a").size();
 			int a_num = e_a.size();
-			int br_node_num = node.select("br").size();
+			int br_node_num = node.select("br,b,big,h1,h2,h3,h4,h5,h6,hr,i,s,font,meta,time").size();
 			int span_node_num = node.select("span").size();
 
 			double child_node_num = Math.max(a_num, (double)(node.getAllElements().size() - 1 - child_of_a - a_num + direct_a_num - br_node_num - span_node_num));
-			if( a_num / child_node_num  > 0.5 ){
+			if( a_num / child_node_num  >= 0.5 ){
 				node.remove();//drop the link block
 			}
 		}
@@ -323,20 +377,7 @@ public class ContentExtractor {
 		Elements topic_blocks = html_body.select("div:matchesOwn(^トピックス$)");
 		for(Element node:topic_blocks){
 			node.parent().remove();
-		}
-		//remove shopping guide(for rakuten) added in 2016/06/27
-//		Elements sg_blocks = html_body.select("tr:matches(お知らせ|利用条件|注意事項|対応可能エリア|配送について|お支払方法|クレジット決済|あす楽)");
-//		for(Element node:sg_blocks){
-//			try{
-//				if(node.text().matches(".*(お知らせ|利用条件|注意事項|対応可能エリア|配送について|お支払方法|クレジット決済|あす楽)+.*")){
-//					node.parent().remove();
-//				}
-//			}
-//			catch(Exception e){
-//				
-//			}
-//		}
-		
+		}	
 		
 		//System.out.println(html_body.outerHtml());
 		html_body.select("[id~=(?i)(header|footer|ft|side|links|keywords|calendar|calender|rule|attention|banner|bn|navi|recommend|plugin|[_-]+ad[_-]+|^ad[_-]+|[_-]+ad$){1}]").remove();
@@ -396,4 +437,16 @@ public class ContentExtractor {
 		return html_body.outerHtml();
 	}
 	
+	private String zenkakuToHankaku(String value) {
+		if(value==null || "".equals(value)) return "";
+	    StringBuilder sb = new StringBuilder(value);
+	    for (int i = 0; i < sb.length(); i++) {
+	        int c = (int) sb.charAt(i);
+	        if ((c >= 0xFF10 && c <= 0xFF19) || (c >= 0xFF21 && c <= 0xFF3A) || (c >= 0xFF41 && c <= 0xFF5A)) {
+	            sb.setCharAt(i, (char) (c - 0xFEE0));
+	        }
+	    }
+	    value = sb.toString();
+	    return value;
+	}
 }

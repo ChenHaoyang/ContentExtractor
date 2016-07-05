@@ -4,7 +4,7 @@
 
   <groupId>com.mad</groupId>
   <artifactId>CEPackage</artifactId>
-  <version>0.0.1-SNAPSHOT</version>
+  <version>1.0.1</version>
   <packaging>jar</packaging>
 
   <name>CEPackage</name>
@@ -19,6 +19,11 @@
 	    <id>CodeLibs Repository</id>
 	    <url>http://maven.codelibs.org</url>
 	  </repository>
+	  <repository>
+		<id>maven-hadoop</id>
+		<name>Hadoop Releases</name>
+		<url>https://repository.cloudera.com/content/repositories/releases/</url>
+	  </repository>
   </repositories>
 
   <dependencies>
@@ -31,12 +36,7 @@
     <dependency>
 		<groupId>org.jsoup</groupId>
 		<artifactId>jsoup</artifactId>
-		<version>1.9.1</version>	
-	</dependency>
-    <dependency>
-		<groupId>commons-lang</groupId>
-		<artifactId>commons-lang</artifactId>
-		<version>2.6</version>
+		<version>1.9.1</version>
 	</dependency>
 	<!-- http://mvnrepository.com/artifact/org.codelibs/elasticsearch-analysis-kuromoji-neologd -->
 	<!-- 
@@ -49,13 +49,20 @@
 	<dependency>
 	    <groupId>org.codelibs</groupId>
 	    <artifactId>lucene-analyzers-kuromoji-ipadic-neologd</artifactId>
-	    <version>6.0.0-20160519</version>
+	    <version>6.0.0-20160613</version>
 	</dependency>
 	<!-- https://mvnrepository.com/artifact/org.languagetool/language-en -->
 	<dependency>
 	    <groupId>org.languagetool</groupId>
 	    <artifactId>language-en</artifactId>
     	<version>3.4</version>
+	</dependency>
+	<!-- http://mvnrepository.com/artifact/org.apache.hbase/hbase-client -->
+	<dependency>
+	    <groupId>org.apache.hbase</groupId>
+	    <artifactId>hbase-client</artifactId>
+	    <version>0.98.6-cdh5.3.0</version>
+	    <scope>provided</scope>
 	</dependency>
   </dependencies>
   <build>
