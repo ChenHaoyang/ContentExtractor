@@ -11,13 +11,12 @@ import java.util.regex.*;
 import org.apache.commons.lang.StringEscapeUtils;;
 
 
-public class TextExtract implements Serializable {
+public class TextExtract {
 	
 	/**
 	 * 
 	 */
 	//08:14:20.32 ID:
-	private static final long serialVersionUID = 1L;
 	private List<String> m_lines;
 	private static int m_blocksWidth=4;
 	private static int m_minTokens = 5;
@@ -28,7 +27,7 @@ public class TextExtract implements Serializable {
 	private StringBuilder m_text;
 	private ArrayList<Integer> m_indexDistribution;
 	
-	private static String m_noiseWords = "記事一覧|利用規約|Copyright|お知らせ|お問い合わせ|利用条件|注意事項|対応可能エリア|配送について|返品について|お支払方法|クレジット決済|あす楽";
+	private static String m_noiseWords = "利用規約|Copyright|お知らせ|お問い合わせ|利用条件|注意事項|対応可能エリア|配送について|返品について|お支払方法|クレジット決済|あす楽";
 	public static String m_targetTokens = "\\w\uFF10-\uFF19\uFF21-\uFF3A\uFF41-\uFF5A\uFF66-\uFF9F\u4E00-\u9FFF\u3040-\u309F\u30A0-\u30FF";
 	public TextExtract() {
 		m_lines = new ArrayList<String>();
@@ -97,6 +96,7 @@ public class TextExtract implements Serializable {
 		//System.out.println(source);
 		//source = "<div id=\"header_ad\"><script></script><div></div></div><div></div>";
 		source = main_rule.matcher(source).replaceAll("");
+		//System.out.println(source);
 		while(sub_rule_01.matcher(source).find())
 			//source = source.replaceAll("(<br>[\\s]*?){2}", "<br>");
 			source = sub_rule_01.matcher(source).replaceAll("<br>");
@@ -296,127 +296,136 @@ public class TextExtract implements Serializable {
 		boolean noise_block = false;
 		
 		try{
-			for(int i = 0; i < line_number ; i++) {
-				if (tokens[i].length() > 0 && ! boolstart) {
-					boolstart = true;
-					start = i;
-					block_token_sum += tokens[i].length();
-					noise_block = tokens[i].matches(".*("+ m_noiseWords +")+.*");
-					if(m_indexDistribution.get(i) > block_max_tokens)
-						block_max_tokens = m_indexDistribution.get(i);
-					//System.out.println("start: " + start);
-					continue;
-				}
-				if (boolstart) {
-					if(!noise_block){
+			try{
+				for(int i = 0; i < line_number ; i++) {
+					if (tokens[i].length() > 0 && ! boolstart) {
+						boolstart = true;
+						start = i;
 						block_token_sum += tokens[i].length();
 						noise_block = tokens[i].matches(".*("+ m_noiseWords +")+.*");
 						if(m_indexDistribution.get(i) > block_max_tokens)
 							block_max_tokens = m_indexDistribution.get(i);
+						//System.out.println("start: " + start);
+						continue;
 					}
-					if (m_indexDistribution.get(i) == 0) {
-						end = i;
+					if (boolstart) {
 						if(!noise_block){
-							ArrayList block_obj = new ArrayList();
-							block_obj.add(start);
-							block_obj.add(end);
-							block_obj.add(block_max_tokens);
-							block_obj.add(block_token_sum);
-							block_idx_map.put(block_num, block_obj);
-							if(block_rnk_map.containsKey(block_max_tokens))
-								block_rnk_map.get(block_max_tokens).add(block_obj);
-							else{
-								ArrayList<List> tmp = new ArrayList();
-								tmp.add(block_obj);
-								block_rnk_map.put(block_max_tokens, tmp);
+							block_token_sum += tokens[i].length();
+							noise_block = tokens[i].matches(".*("+ m_noiseWords +")+.*");
+							if(m_indexDistribution.get(i) > block_max_tokens)
+								block_max_tokens = m_indexDistribution.get(i);
+						}
+						if (m_indexDistribution.get(i) == 0) {
+							end = i;
+							if(!noise_block){
+								ArrayList block_obj = new ArrayList();
+								block_obj.add(start);
+								block_obj.add(end);
+								block_obj.add(block_max_tokens);
+								block_obj.add(block_token_sum);
+								block_idx_map.put(block_num, block_obj);
+								if(block_rnk_map.containsKey(block_max_tokens))
+									block_rnk_map.get(block_max_tokens).add(block_obj);
+								else{
+									ArrayList<List> tmp = new ArrayList();
+									tmp.add(block_obj);
+									block_rnk_map.put(block_max_tokens, tmp);
+								}
+								list_for_sort.add(block_max_tokens);
+								block_num++;
 							}
-							list_for_sort.add(block_max_tokens);
-							block_num++;
+							//list_for_sort.add(block_token_sum);
+							//total_sum += block_max_tokens;
+							//System.out.print(block_max_tokens + "\n");
+							block_max_tokens = 0;
+							block_token_sum = 0;
+							//System.out.println("end: " + end);
+							boolstart = false;
 						}
-						//list_for_sort.add(block_token_sum);
-						//total_sum += block_max_tokens;
-						//System.out.print(block_max_tokens + "\n");
-						block_max_tokens = 0;
-						block_token_sum = 0;
-						//System.out.println("end: " + end);
-						boolstart = false;
 					}
 				}
-			}
-			
-			if(start > end){
-				if(!noise_block){
-					ArrayList block_obj = new ArrayList();
-					block_obj.add(start);
-					block_obj.add(line_number);
-					block_obj.add(block_max_tokens);
-					block_obj.add(block_token_sum);
-					block_idx_map.put(block_num, block_obj);
-					if(block_rnk_map.containsKey(block_max_tokens))
-						block_rnk_map.get(block_max_tokens).add(block_obj);
-					else{
-						ArrayList<List> tmp = new ArrayList();
-						tmp.add(block_obj);
-						block_rnk_map.put(block_max_tokens, tmp);
-					}
-					list_for_sort.add(block_max_tokens);
-					block_num++;
-				}
-				//list_for_sort.add(block_token_sum);
-				//total_sum += block_max_tokens;
-			}
-			m_threshold = calThreshold(list_for_sort);
-			
-			for(int i=0; i<block_num;){
-				for(Object ob:block_rnk_map.get(list_for_sort.get(i))){
-					List tmp = (List)ob;
-					tmp.add(++i);
-				}
-			}
-			int min_block_idx = 0;
-			//最大ブロック数を有効にする
-			if(m_maxBlocks > 0)
-				min_block_idx = block_num - m_maxBlocks;
-			//start to choose blocks
-			for(int i=0; i<block_num;i++){
-				List block = block_idx_map.get(i);
-				long b_max_tokens = (Long)block.get(2);
-				long b_token_sum = (Long)block.get(3);
 				
-				if(b_max_tokens >= m_threshold){
-					if((Integer)block.get(4) <= min_block_idx)
-						continue;
-					int b_start = (Integer)block.get(0);
-					int b_end = (Integer)block.get(1);
-					
-					if(b_start >= parse_max_line && b_token_sum < 200 )
-						continue;
-					
-					buffer.setLength(0);
-					line_count=0;
-					//System.out.println(start+1 + "\t\t" + end+1);
-					for (int ii = b_start; ii < b_end; ii++) {
-						String txt = tokens[ii];
-						if (txt.length() == 0) continue;
-						if(line_count > m_maxLinesInBlock) break;
-						
-						//ユーザー名などの文字行をスキップする
-						if(!m_lines.get(ii).matches("(.*[\\d]{2}[:\\.]{1}[\\d]{2}([:\\.]{1}[\\d]{2})?.*|.*ID:.*)")){
-							buffer.append(m_lines.get(ii).trim() + "\n");
-							line_count++;
+				if(start > end){
+					if(!noise_block){
+						ArrayList block_obj = new ArrayList();
+						block_obj.add(start);
+						block_obj.add(line_number);
+						block_obj.add(block_max_tokens);
+						block_obj.add(block_token_sum);
+						block_idx_map.put(block_num, block_obj);
+						if(block_rnk_map.containsKey(block_max_tokens))
+							block_rnk_map.get(block_max_tokens).add(block_obj);
+						else{
+							ArrayList<List> tmp = new ArrayList();
+							tmp.add(block_obj);
+							block_rnk_map.put(block_max_tokens, tmp);
 						}
+						list_for_sort.add(block_max_tokens);
+						block_num++;
 					}
-					if(buffer.length() > 0){
-						String str = buffer.toString();
-						block.add(str);
-						m_text.append(str);	
+					//list_for_sort.add(block_token_sum);
+					//total_sum += block_max_tokens;
+				}
+				m_threshold = calThreshold(list_for_sort);
+				
+				for(int i=0; i<block_num;){
+					for(Object ob:block_rnk_map.get(list_for_sort.get(i))){
+						List tmp = (List)ob;
+						tmp.add(++i);
+					}
+				}
+				int min_block_idx = 0;
+				//最大ブロック数を有効にする
+				if(m_maxBlocks > 0)
+					min_block_idx = block_num - m_maxBlocks;
+				//start to choose blocks
+				for(int i=0; i<block_num;i++){
+					List block = block_idx_map.get(i);
+					long b_max_tokens = (Long)block.get(2);
+					long b_token_sum = (Long)block.get(3);
+					
+					if(b_max_tokens >= m_threshold){
+						if((Integer)block.get(4) <= min_block_idx)
+							continue;
+						int b_start = (Integer)block.get(0);
+						int b_end = (Integer)block.get(1);
+						
+						if(b_start >= parse_max_line && b_token_sum < 200 )
+							continue;
+						
+						buffer.setLength(0);
+						//System.gc();
+						line_count=0;
+						//System.out.println(start+1 + "\t\t" + end+1);
+						for (int ii = b_start; ii < b_end; ii++) {
+							String txt = tokens[ii];
+							if (txt.length() == 0) continue;
+							if(line_count > m_maxLinesInBlock) break;
+							
+							//ユーザー名などの文字行をスキップする
+							if(!m_lines.get(ii).matches("(.*[\\d]{2}[:\\.]{1}[\\d]{2}([:\\.]{1}[\\d]{2})?.*|.*ID:.*|.*記事一覧.*)")){
+								buffer.append(m_lines.get(ii).trim() + "\n");
+								line_count++;
+							}
+						}
+						if(buffer.length() > 0){
+							String str = buffer.toString();
+							block.add(str);
+							m_text.append(str);	
+						}
 					}
 				}
 			}
+			catch(Exception e){
+				System.out.println(e.toString());
+			}
+		}catch(Error r){
+			m_text.setLength(0);
+			System.gc();
+			return null;
 		}
-		catch(Exception e){
-			System.out.println(e.toString());
-		}
+		//buffer=null;
+		//System.gc();
 		return m_text.toString();
 	}
 /*	

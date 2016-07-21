@@ -46,12 +46,11 @@ import java.util.Set;
 
 
 
-public class ContentExtractor implements Serializable{
+public class ContentExtractor {
 
 	/**
 	 * 
 	 */
-	private static final long serialVersionUID = 1L;
 	private Tokenizer m_tokenizer;
 	//private JapaneseAnalyzer m_analyzer;
 	private CharTermAttribute m_term;
@@ -64,6 +63,7 @@ public class ContentExtractor implements Serializable{
 	private JLanguageTool m_langTool;
 	private HTableInterface m_hTable;
 	private static String m_tableName = "dict_en";
+	private static int m_maxHtmlSize = 4000;
 	
 	/**
 	 * @author charles
@@ -234,18 +234,26 @@ public class ContentExtractor implements Serializable{
 	
 	private HashMap<String, String> extract(String html) throws Exception{
 		if(html==null || "".equals(html)) return null;
+		
+		long str_len = html.length();
 
 		String keyword_list = "";
 		TokenStream tokenStream;
 		HashMap<String, String> result = new HashMap<String, String>();
 		HashMap<String, Integer> word_count = new HashMap<String, Integer>();
 		
+		//System.out.print(html);
 		Document doc = Jsoup.parse(html, "", Parser.xmlParser().setTrackErrors(0));
 		String meta_title = zenkakuToHankaku(doc.title());
 		String meta_description = zenkakuToHankaku(doc.select("meta[name=\"description\"]").attr("content"));
 		String meta_keywords = zenkakuToHankaku(doc.select("meta[name=\"keywords\"]").attr("content"));
-		String body = tagFiltering(doc.select("body").first());
-		String main_text = zenkakuToHankaku(m_textExtract.parse(body));
+		int size = html.getBytes("UTF-8").length/1024;
+		String body = "";
+		String main_text = "";
+		if(size < m_maxHtmlSize){
+			body = tagFiltering(doc.select("body").first());
+			main_text = zenkakuToHankaku(m_textExtract.parse(body));
+		}
 		StringReader sr = new StringReader((meta_title + " " + meta_description + " " + meta_keywords + " " + main_text).replaceAll("[^"+TextExtract.m_targetTokens+" .\\-\'\\n]", ""));
 		m_tokenizer.setReader(sr);
 		//m_tokenizer.setReader(new StringReader(meta_title + meta_description + meta_keywords + main_text));
@@ -344,10 +352,20 @@ public class ContentExtractor implements Serializable{
 		if(html_body == null){
 			return null;
 		}
+//		int t = Integer.MAX_VALUE;
+//		html_body.outerHtml();
+//		try{
+//			BufferedWriter tt= new BufferedWriter(new OutputStreamWriter(new FileOutputStream("/home/charles/Data/output/test.txt")));
+//			tt = html_body.html(tt);
+//			tt.close();
+//
+//		}catch(Exception e){
+//			System.out.print(e.toString());
+//		}
 		//System.out.println(body.outerHtml());
 		//body.select("meta").remove();
 		//remove link block
-		Elements link_blocks = html_body.select("div:has(a), span:has(a), ul:has(a), td:has(a), ol:has(a), dir:has(a)");
+		Elements link_blocks = html_body.select("div:has(a), span:has(a), li:has(a), td:has(a), dir:has(a)");
 		for(Element node:link_blocks){
 			int child_of_a=0;
 			int a_txt_num = 0;
@@ -385,7 +403,7 @@ public class ContentExtractor implements Serializable{
 		html_body.select("[class~=(?i)(header|footer|links|calendar|calender|no_display|nodisplay|rule|attention|banner|bn|navi|month|recommend|plugin|[_-]+ad[_-]+|^ad[_-]+|[_-]+ad$){1}]").remove();
 		//System.out.print(body.outerHtml());
 		html_body.select("[style~=(?i)(display[\\s]*:[\\s]*none|visible[\\s]*:[\\s]*hidden){1}]").remove();
-		//System.out.print(body.outerHtml());
+		//System.out.print(html_body.outerHtml());
 		html_body.select("select, noscript, head, header, script, style, footer, aside, time, small, h1, h2, h3, h4, h5, h6").remove();
 		//System.out.println(body.outerHtml());
 		html_body.select("form, iframe, textarea, input").remove();
@@ -393,7 +411,7 @@ public class ContentExtractor implements Serializable{
 		
 		html_body.select("a:matchesOwn((?i)(http|https|.com|.cn|.net|.jp)+)").remove();
 		//body.select("table[class]")
-		//System.out.println(body.outerHtml());
+		//System.out.println(html_body.outerHtml());
 		//Document dd = Jsoup.parse("<body><t1>11<t11></t11></t1><t2><t2></t2></t2></body>");
 		//int test = dd.select("body").first().childNodeSize();
 		//body.select("li:has(a), dt:has(a), dd:has(a)").remove();
@@ -414,27 +432,44 @@ public class ContentExtractor implements Serializable{
 			String[] str = node.attr("style").toLowerCase().split(";");
 			for(String style:str){
 				if(style.contains("font-size")){
-					String[] key_val = style.split(":");
+					String[] key_val = style.trim().split(":");
+					if(key_val.length < 2) continue;
 					key_val[1] = key_val[1].trim();
-					String unit = key_val[1].substring(key_val[1].length()-2);
-					String font_size = key_val[1].substring(0, key_val[1].length()-2);
-					if(unit.equals("px")){
-						if(Integer.parseInt(font_size) < 10)
-							node.remove();
+					//ここでは、文字列の形式を判断する
+					if(key_val[1].matches("^[0-9\\.]+[a-z]{2}$")){
+						String unit = key_val[1].substring(key_val[1].length()-2);
+						String font_size = key_val[1].substring(0, key_val[1].length()-2);
+						if(unit.equals("px")){
+							if(Double.parseDouble(font_size) < 10.0)
+								node.remove();
+						}
+						else if(unit.equals("pt")){
+							if(Double.parseDouble(font_size) < 7.5)
+								node.remove();
+						}
+						else if(unit.equals("em")){
+							if(Double.parseDouble(font_size) < 0.625)
+								node.remove();
+						}
 					}
-					else if(unit.equals("pt")){
-						if(Double.parseDouble(font_size) < 7.5)
+					else if(key_val[1].matches("^[0-9]+[\\.]?[0-9]*$")){
+						if(Double.parseDouble(key_val[1]) < 7.5){
 							node.remove();
-					}
-					else if(unit.equals("em")){
-						if(Double.parseDouble(font_size) < 0.625)
-							node.remove();
+						}
 					}
 				}
 			}
 		}
 		
-		return html_body.outerHtml();
+		String html_str = null;
+		try{
+			html_str = html_body.outerHtml();
+		}catch(Throwable r){
+			//System.out.print(r.toString());
+			System.gc();
+		}
+		//System.out.print(html_str);
+		return html_str;
 	}
 	
 	private String zenkakuToHankaku(String value) {
@@ -447,6 +482,8 @@ public class ContentExtractor implements Serializable{
 	        }
 	    }
 	    value = sb.toString();
+	    //sb=null;
+	    //System.gc();
 	    return value;
 	}
 }
