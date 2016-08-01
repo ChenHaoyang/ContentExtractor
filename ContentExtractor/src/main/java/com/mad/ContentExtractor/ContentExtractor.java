@@ -61,8 +61,8 @@ public class ContentExtractor {
 		long time = System.currentTimeMillis();
 		ContentExtractor ce = new ContentExtractor();
 		try{
-			//ce.forTest();
-			ce.extract();
+			ce.forTest();
+			//ce.extract();
 		}
 		catch(Exception e){
 			e.printStackTrace();
