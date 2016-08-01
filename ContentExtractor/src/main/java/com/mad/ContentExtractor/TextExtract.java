@@ -28,7 +28,8 @@ public class TextExtract {
 	private ArrayList<Integer> m_indexDistribution;
 	
 	private static String m_noiseWords = "利用規約|Copyright|お知らせ|お問い合わせ|利用条件|注意事項|対応可能エリア|配送について|返品について|お支払方法|クレジット決済|あす楽";
-	public static String m_targetTokens = "\\w\uFF10-\uFF19\uFF21-\uFF3A\uFF41-\uFF5A\uFF66-\uFF9F\u4E00-\u9FFF\u3040-\u309F\u30A0-\u30FF";
+	public static String m_targetTokens = "\\w\uFF10-\uFF19\uFF21-\uFF3A\uFF41-\uFF5A\uFF66-\uFF9F\u4E00-\u9FFF\u3040-\u309F\u30A0-\u30FF";//\u3001-\u3002\u002C\u002E
+	//                                      英文、全角数字　全角英文(大)　全角英文(小)　半角(カ)　CJK統合漢字　平仮名　　　	片仮名　　　、　。　　　　,    .
 	public TextExtract() {
 		m_lines = new ArrayList<String>();
 		m_indexDistribution = new ArrayList<Integer>();

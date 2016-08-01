@@ -58,12 +58,14 @@ public class ContentExtractor {
 	private PartOfSpeechAttribute m_partOfSpeech;
 	private TextExtract m_textExtract;
 	private boolean m_lowerCase;
-	private CharArraySet m_stopSet;
-	private Set<String> m_stopTags;
+	private static CharArraySet m_stopSet = null;
+	private static Set<String> m_stopTags = null;
 	private JLanguageTool m_langTool;
 	private HTableInterface m_hTable;
 	private static String m_tableName = "dict_en";
-	private static int m_maxHtmlSize = 4000;
+	private static int m_maxHtmlSize = 1024;
+	private static UserDictionary m_userDict = null;
+	private static Integer m_lock = 1;
 	
 	/**
 	 * @author charles
@@ -85,58 +87,65 @@ public class ContentExtractor {
 	 * @param max_lines_in_block set the maximal lines of block can be retrieved. (default: 50)
 	 * @author charles
 	 * @version 1.0.1
+	 * @throws Exception 
 	 * @throws Exception
 	 */
-	public ContentExtractor(boolean isUsrDict, boolean discardPunctuation, int mode, HConnection conn, int blocks_width, int min_tokens, double main_ratio, int max_blocks, int max_lines_in_block) throws Exception{
-		UserDictionary usrDict = null;
+	public  ContentExtractor(boolean isUsrDict, boolean discardPunctuation, int mode, HConnection conn, int blocks_width, int min_tokens, double main_ratio, int max_blocks, int max_lines_in_block) throws Exception{
+		//UserDictionary usrDict = null;
 		m_lowerCase = true;
-		
-		if(isUsrDict){
-			//userDict = new UserDictionary(Files.readAllLines(Paths.get(this.getClass().getResource("/user_dict.txt").getPath())));
-			usrDict = UserDictionary.open(new BufferedReader(new InputStreamReader(this.getClass().getResourceAsStream("/user_dict.txt"))));
-			//usrDict.
+		synchronized(m_lock){
+			if(isUsrDict && m_userDict == null){
+				//userDict = new UserDictionary(Files.readAllLines(Paths.get(this.getClass().getResource("/user_dict.txt").getPath())));
+				m_userDict = UserDictionary.open(new BufferedReader(new InputStreamReader(this.getClass().getResourceAsStream("/user_dict.txt"))));
+				//usrDict.
+			}
 		}
 		
 		switch(mode){
 		case 0:
-			m_tokenizer = new JapaneseTokenizer(usrDict, discardPunctuation, JapaneseTokenizer.Mode.NORMAL);
+			m_tokenizer = new JapaneseTokenizer(m_userDict, discardPunctuation, JapaneseTokenizer.Mode.NORMAL);
 			//m_analyzer = new JapaneseAnalyzer(usrDict, JapaneseTokenizer.Mode.NORMAL, JapaneseAnalyzer.getDefaultStopSet(),JapaneseAnalyzer.getDefaultStopTags());
 			break;
 		case 1:
-			m_tokenizer = new JapaneseTokenizer(usrDict, discardPunctuation, JapaneseTokenizer.Mode.SEARCH);
+			m_tokenizer = new JapaneseTokenizer(m_userDict, discardPunctuation, JapaneseTokenizer.Mode.SEARCH);
 			//m_analyzer = new JapaneseAnalyzer(usrDict, JapaneseTokenizer.Mode.SEARCH, JapaneseAnalyzer.getDefaultStopSet(),JapaneseAnalyzer.getDefaultStopTags());
 			break;
 		case 2:
-			m_tokenizer = new JapaneseTokenizer(usrDict, discardPunctuation, JapaneseTokenizer.Mode.EXTENDED);
+			m_tokenizer = new JapaneseTokenizer(m_userDict, discardPunctuation, JapaneseTokenizer.Mode.EXTENDED);
 			//m_analyzer = new JapaneseAnalyzer(usrDict, JapaneseTokenizer.Mode.EXTENDED, JapaneseAnalyzer.getDefaultStopSet(),JapaneseAnalyzer.getDefaultStopTags());
 			break;
 		default:
-			m_tokenizer = new JapaneseTokenizer(usrDict, discardPunctuation, JapaneseTokenizer.Mode.NORMAL);
+			m_tokenizer = new JapaneseTokenizer(m_userDict, discardPunctuation, JapaneseTokenizer.Mode.NORMAL);
 		}
 		//m_tokenizer = new JapaneseTokenizer(null, discardPunctuation, JapaneseTokenizer.Mode.NORMAL);
 		m_term = m_tokenizer.addAttribute(CharTermAttribute.class);
 		m_baseForm = m_tokenizer.addAttribute(BaseFormAttribute.class);
 		m_partOfSpeech = m_tokenizer.addAttribute(PartOfSpeechAttribute.class);
 		m_textExtract = new TextExtract(blocks_width, min_tokens, main_ratio, max_blocks, max_lines_in_block);
-		m_stopSet = JapaneseAnalyzer.getDefaultStopSet();
-		m_stopTags = JapaneseAnalyzer.getDefaultStopTags();
-		
-		//Add stop words of English language
-		BufferedReader br = new BufferedReader(new InputStreamReader(this.getClass().getResourceAsStream("/stopwords_en.txt")));
-		String sw = br.readLine();
-		while(sw != null){
-			m_stopSet.add(sw);
-			sw = br.readLine();
+		synchronized(m_lock){
+			if(m_stopSet == null){
+				m_stopSet = JapaneseAnalyzer.getDefaultStopSet();
+				//m_stopSet.
+				m_stopTags = JapaneseAnalyzer.getDefaultStopTags();
+				
+				//Add stop words of English language
+				BufferedReader br = new BufferedReader(new InputStreamReader(this.getClass().getResourceAsStream("/stopwords_en.txt")));
+				String sw = br.readLine();
+				while(sw != null){
+					m_stopSet.add(sw);
+					sw = br.readLine();
+				}
+				br.close();
+				br = new BufferedReader(new InputStreamReader(this.getClass().getResourceAsStream("/stopwords_jp.txt")));
+				sw = br.readLine();
+				while(sw != null){
+					if(!m_stopSet.contains(sw))
+						m_stopSet.add(sw);
+					sw = br.readLine();
+				}
+				br.close();
+			}
 		}
-		br.close();
-		br = new BufferedReader(new InputStreamReader(this.getClass().getResourceAsStream("/stopwords_jp.txt")));
-		sw = br.readLine();
-		while(sw != null){
-			if(!m_stopSet.contains(sw))
-				m_stopSet.add(sw);
-			sw = br.readLine();
-		}
-		br.close();
 		
 //		long time;
 //		time = System.currentTimeMillis();
@@ -235,8 +244,14 @@ public class ContentExtractor {
 	private HashMap<String, String> extract(String html) throws Exception{
 		if(html==null || "".equals(html)) return null;
 		
+		int size = html.getBytes("UTF-8").length/1024;
+		
 		long str_len = html.length();
-
+		if(size >= m_maxHtmlSize){
+			return null;
+		}
+		
+		int keyword_count = 0;
 		String keyword_list = "";
 		TokenStream tokenStream;
 		HashMap<String, String> result = new HashMap<String, String>();
@@ -247,14 +262,11 @@ public class ContentExtractor {
 		String meta_title = zenkakuToHankaku(doc.title());
 		String meta_description = zenkakuToHankaku(doc.select("meta[name=\"description\"]").attr("content"));
 		String meta_keywords = zenkakuToHankaku(doc.select("meta[name=\"keywords\"]").attr("content"));
-		int size = html.getBytes("UTF-8").length/1024;
-		String body = "";
-		String main_text = "";
-		if(size < m_maxHtmlSize){
-			body = tagFiltering(doc.select("body").first());
-			main_text = zenkakuToHankaku(m_textExtract.parse(body));
-		}
-		StringReader sr = new StringReader((meta_title + " " + meta_description + " " + meta_keywords + " " + main_text).replaceAll("[^"+TextExtract.m_targetTokens+" .\\-\'\\n]", ""));
+		
+		String body = tagFiltering(doc.select("body").first());
+		String main_text = zenkakuToHankaku(m_textExtract.parse(body));
+		
+		StringReader sr = new StringReader((meta_title + " " + meta_description + " " + meta_keywords + " " + main_text).replaceAll("[^"+TextExtract.m_targetTokens+" ,\\-\'\\n]", ""));
 		m_tokenizer.setReader(sr);
 		//m_tokenizer.setReader(new StringReader(meta_title + meta_description + meta_keywords + main_text));
 		//m_tokenizer.setReader(new StringReader("伊倉愛美"));
@@ -317,6 +329,7 @@ public class ContentExtractor {
 		
 		for(Entry<String, Integer> entry:sorted_map){
 			keyword_list += (entry.getKey() + ":" + entry.getValue() + ",");
+			keyword_count += entry.getValue();
 		}
 		
 		if(keyword_list.length() > 0)
@@ -327,6 +340,7 @@ public class ContentExtractor {
 		result.put("meta_keywords", meta_keywords);
 		result.put("main_text", main_text);
 		result.put("keywords", keyword_list);
+		result.put("token_num", String.valueOf(keyword_count));
 		
 		tokenStream.end();
 		tokenStream.close();
